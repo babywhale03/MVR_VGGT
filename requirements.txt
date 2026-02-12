@@ -1,0 +1,13 @@
+numpy==1.26.1
+Pillow
+huggingface_hub
+safetensors
+timm==0.9.16
+accelerate==0.30.1
+torchdiffeq==0.2.5
+wandb
+transformers==4.44.2
+einops
+omegaconf==2.3.0
+torchmetrics==1.4.0
+torch-fidelity

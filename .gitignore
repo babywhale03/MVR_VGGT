@@ -174,3 +174,4 @@ cython_debug/
 RAE/wandb
 RAE/ckpts
 DiT4SR/
+wandb/

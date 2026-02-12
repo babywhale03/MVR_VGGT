@@ -42,4 +42,4 @@ bash RAE/scripts/JIHYE/JIHYE_run_train_multiview_vggt_ddt_g3_lqkernel200_maxview
 bash RAE/scripts/JIHYE/JIHYE_run_train_multiview_vggt_ddt_g3_lqkernel200_maxview16.sh
 ```
 
-### 2. Training config yaml file : [MVR_VGGT](/mnt/dataset1/jaeeun/MVR_vggt/RAE/configs/JIHYE/JIHYE_run_train_multiview_vggt_ddt_g3.yaml)
+### 2. Training config yaml file : [MVR_VGGT](RAE/configs/JIHYE/JIHYE_run_train_multiview_vggt_ddt_g3.yaml)

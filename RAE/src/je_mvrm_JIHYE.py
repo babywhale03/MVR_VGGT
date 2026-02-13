@@ -228,7 +228,8 @@ def main():
         clip_grad = None
     ema_decay = float(training_cfg.get("ema_decay", 0.9995))
     num_epochs = int(training_cfg.get("epochs", 1400))
-    global_batch_size = training_cfg.get("global_batch_size", None) # optional global batch size for override
+    global_batch_size = args.global_batch_size
+    # global_batch_size = training_cfg.get("global_batch_size", None) # optional global batch size for override
     if global_batch_size is not None:
         global_batch_size = int(global_batch_size)
         assert global_batch_size % world_size == 0, "global_batch_size must be divisible by world_size"

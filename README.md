@@ -9,6 +9,7 @@ conda activate mvrvggt
 
 ### 2. Library Installation
 ```bash
+cd MVR_VGGT
 pip install torch==2.8.0 torchvision torchaudio --index-url https://download.pytorch.org/whl/cu129 
 pip install -r requirements.txt
 ```

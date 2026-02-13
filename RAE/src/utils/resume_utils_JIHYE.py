@@ -8,7 +8,7 @@ from .wandb_utils import initialize, create_logger
 import logging
 
 def configure_experiment_dirs(args, full_cfg, rank) -> Tuple[str, str, logging.Logger]:
-    experiment_name = f"{full_cfg.stage_2.exp_name}__g{full_cfg.training.extract_layer}__view{args.max_view}__{args.precision}__ep{full_cfg.training.epochs}__bs-{full_cfg.training.global_batch_size}__lr-{full_cfg.training.optimizer.lr:.0e}__ema-{full_cfg.training.ema_decay}"
+    experiment_name = f"{full_cfg.stage_2.exp_name}__g{full_cfg.training.extract_layer}__kernel{args.kernel_size}__view{args.max_view}__{args.precision}__ep{full_cfg.training.epochs}__bs-{full_cfg.training.global_batch_size}__lr-{full_cfg.training.optimizer.lr:.0e}__ema-{full_cfg.training.ema_decay}"
     experiment_dir = os.path.join(full_cfg.log.result_root_dir, full_cfg.stage_2.save_folder, experiment_name)
     checkpoint_dir = os.path.join(experiment_dir, "checkpoints") 
     if rank == 0:

@@ -1,7 +1,7 @@
 stage_2:
   model: VGGTMVRM
   target: stage2.models.DDTMVRM_pos_multi.DiTwDDTHead
-  save_folder: train_hypersim_tartanair_randomcam__val_eth3d__nearrandom
+  save_folder: train_hypersim_tartanair_nearcam__val_eth3d__nearrandom
   exp_name: val30_seed
   params:
     input_size: 16

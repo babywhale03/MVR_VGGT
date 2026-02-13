@@ -1,6 +1,6 @@
 stage_2:
   target: stage2.models.DDTMVRM_pos_multi.DiTwDDTHead
-  save_folder: JIHYE_train_hypersim_randomcam_tartanair_nearrandom
+  save_folder: JIHYE_train_hypersim_nearcam_tartanair_nearrandom
   exp_name: JIHYE_VGGTMVRM
   params:
     input_size: 16

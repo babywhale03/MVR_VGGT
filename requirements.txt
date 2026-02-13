@@ -11,3 +11,4 @@ einops
 omegaconf==2.3.0
 torchmetrics==1.4.0
 torch-fidelity
+pytz

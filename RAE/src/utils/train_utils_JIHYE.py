@@ -22,7 +22,7 @@ import h5py
 from .view_sel_near_camera import compute_ranking
 
 from motionblur.motionblur import Kernel 
-from vggt.utils.load_fn import *
+from vggt.vggt.utils.load_fn import *
 
 def parse_configs(config: Union[DictConfig, str]) -> Tuple[DictConfig, DictConfig, DictConfig, DictConfig, DictConfig, DictConfig, DictConfig]:
     """Load a config file and return component sections as DictConfigs."""

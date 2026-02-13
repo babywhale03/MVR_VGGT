@@ -41,7 +41,7 @@ import torchvision.transforms as T
 import torch.nn.functional as F
 from torchvision.utils import make_grid, save_image
 
-from vggt.models.vggt import VGGT
+from vggt.vggt.models.vggt import VGGT
 
 ##### model imports
 # from stage1 import RAE
@@ -495,13 +495,13 @@ def main():
                 #     continue
                 # breakpoint()
                 with torch.cuda.amp.autocast(dtype=dtype):
-                    clean_predictions = vggt_model(clean_img.to(device), extract_layer_num=extract_layer) # [B, 1, 1041, 2048]
+                    clean_predictions = vggt_model(clean_img.to(device, dtype=dtype), extract_layer_num=extract_layer) # [B, 1, 1041, 2048]
                     clean_img_latent = clean_predictions["extracted_latent"] # [B, 1, 1041, 2048]
                     clean_latent_depths = clean_predictions['depth'] # [B, 1, 392, 518, 1]
 
                     # frame + global latent 
                     # imagenet normalization to deg_img
-                    predictions = vggt_model(deg_img.to(device), extract_layer_num=extract_layer) # [B, 1, 1041, 2048]
+                    predictions = vggt_model(deg_img.to(device, dtype=dtype), extract_layer_num=extract_layer) # [B, 1, 1041, 2048]
                     train_depths = predictions['depth'] # [B, 1, 392, 518, 1]
                     deg_latent = predictions["extracted_latent"] # [B, 1, 1041, 2048]
                     breakpoint()
@@ -611,13 +611,13 @@ def main():
                 with torch.no_grad():
                     zs = torch.randn(*deg_latent.shape, generator=generator, device=device, dtype=torch.float32)
                     xt = zs + deg_latent
-                    sample_model_kwargs["img"] = deg_img.to(device)
+                    sample_model_kwargs["img"] = deg_img.to(device, dtype=dtype)
 
                     with autocast(**autocast_kwargs):
                         restored_latent = eval_sampler(xt, ema_model_fn, **sample_model_kwargs)[-1].float()
                     
                     vggt_result = {'restored_latent': restored_latent}
-                    restored_predictions = vggt_model(deg_img.to(device), extract_layer_num=extract_layer, 
+                    restored_predictions = vggt_model(deg_img.to(device, dtype=dtype), extract_layer_num=extract_layer, 
                                                     vggt_result=vggt_result, change_latent=True)
                     restored_depths = restored_predictions['depth']
                     

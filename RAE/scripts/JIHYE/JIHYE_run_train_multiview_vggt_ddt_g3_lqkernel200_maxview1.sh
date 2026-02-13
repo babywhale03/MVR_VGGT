@@ -1,5 +1,5 @@
 NUM_GPUS=1
-CUDA=6
+CUDA=2
 
 export CUDA=${CUDA}
 export PYTHONPATH=$PWD

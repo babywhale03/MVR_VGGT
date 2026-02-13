@@ -170,6 +170,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-view", type=int, default=8, help="Maximum number of views to use per scene.")
     parser.add_argument("--wandb", action="store_true", help="Use wandb logging.")
     parser.add_argument("--kernel-size", type=int, default=100, help="Diffusion model kernel size.")
+    parser.add_argument("--global-batch-size", type=int, default=None, help="Optional global batch size for override.")
     args = parser.parse_args()
     return args
 

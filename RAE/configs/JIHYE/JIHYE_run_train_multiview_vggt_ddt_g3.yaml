@@ -54,12 +54,12 @@ training:
   # SET GLOBAL BATCH SIZE
   # global_batch_size: 8
   grad_accum_steps: 1 
-  ema_decay: 0.9999
+  ema_decay: 0.9995
   # SET NUMBER OF WORKERS TO GPU_NUM*4
-  num_workers: 8
+  num_workers: 16
   log_interval: 50
   # SET MODEL WEIGHT SAVING CKPT INTERVAL
-  checkpoint_interval: 1000 # step
+  checkpoint_interval: 2000 # step
   sample_every: 1000
   clip_grad: 1.0
   global_seed: 42
@@ -139,25 +139,22 @@ data:
           strategy: "near_random" # or "random", "sequential"
           expand_ratio: 2.0
       
-# WANDB로깅 가능하시다면, 제껄로 로깅 해주시면 되는데,
-# 보안상 어렵다면, 여기 log 블럭은 다 주석하시고 아래 log부분 주석 풀고 실행하시면 됩니다
-log:
-  # SET SAVING PATH
-  result_root_dir: RAE/ckpts/JIHYE/
-  tracker:
-    name: wandb
-    wandb:
-      key: a44758ca07858594065872c389df0962658144f6
-      entity: whale03-org
-      project: mv_restoration
-
-
 # log:
 #   # SET SAVING PATH
 #   result_root_dir: RAE/ckpts/JIHYE/
 #   tracker:
-#     name: 
+#     name: wandb
 #     wandb:
-#       key: 
-#       entity: 
-#       project:
+#       key: a44758ca07858594065872c389df0962658144f6
+#       entity: whale03-org
+#       project: mv_restoration
+
+log:
+  # SET SAVING PATH
+  result_root_dir: RAE/ckpts/JIHYE/
+  tracker:
+    name: 
+    wandb:
+      key: 
+      entity: 
+      project:

@@ -18,29 +18,14 @@ pip install -r requirements.txt
 
 ### 1. Training bash script
 ```bash
-# CUDA=0
-bash RAE/scripts/JIHYE/JIHYE_run_train_multiview_vggt_ddt_g3_lqkernel100_maxview1.sh
+# CUDA=0,1,2,3
+bash RAE/scripts/JIHYE/JIHYE_run_train_multiview_vggt_ddt_g3_lqkernel50_maxview8.sh
 
-# CUDA=1
-bash RAE/scripts/JIHYE/JIHYE_run_train_multiview_vggt_ddt_g3_lqkernel100_maxview2.sh
-
-# CUDA=2,3
+# CUDA=4,5,6,7
 bash RAE/scripts/JIHYE/JIHYE_run_train_multiview_vggt_ddt_g3_lqkernel100_maxview8.sh
 
-# CUDA=4,5
-bash RAE/scripts/JIHYE/JIHYE_run_train_multiview_vggt_ddt_g3_lqkernel100_maxview16.sh
-
-# CUDA=6
-bash RAE/scripts/JIHYE/JIHYE_run_train_multiview_vggt_ddt_g3_lqkernel200_maxview1.sh
-
-# CUDA=7
-bash RAE/scripts/JIHYE/JIHYE_run_train_multiview_vggt_ddt_g3_lqkernel200_maxview2.sh
-
-# CUDA=8,9
+# CUDA=8,9,10,11
 bash RAE/scripts/JIHYE/JIHYE_run_train_multiview_vggt_ddt_g3_lqkernel200_maxview8.sh
-
-# CUDA=10,11
-bash RAE/scripts/JIHYE/JIHYE_run_train_multiview_vggt_ddt_g3_lqkernel200_maxview16.sh
 ```
 
 ### 2. Training config yaml file : [MVR_VGGT](RAE/configs/JIHYE/JIHYE_run_train_multiview_vggt_ddt_g3.yaml)

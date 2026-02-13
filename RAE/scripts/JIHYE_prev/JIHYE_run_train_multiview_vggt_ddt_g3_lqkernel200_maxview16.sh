@@ -1,5 +1,5 @@
-NUM_GPUS=4
-CUDA=8,9,10,11
+NUM_GPUS=2
+CUDA=10,11
 
 export CUDA=${CUDA}
 export PYTHONPATH=$PWD
@@ -10,6 +10,6 @@ CUDA_VISIBLE_DEVICES=${CUDA} python -m torch.distributed.run --standalone --npro
     RAE/src/je_mvrm_JIHYE.py --config RAE/configs/JIHYE/JIHYE_run_train_multiview_vggt_ddt_g3.yaml \
     --image-size 256 \
     --precision fp32 \
-    --max-view 8 \
+    --max-view 16 \
     --kernel-size 200 \
-    --global-batch-size 16
+    --global-batch-size 4

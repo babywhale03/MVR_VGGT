@@ -1,5 +1,5 @@
-NUM_GPUS=4
-CUDA=8,9,10,11
+NUM_GPUS=2
+CUDA=2,3
 
 export CUDA=${CUDA}
 export PYTHONPATH=$PWD
@@ -11,5 +11,5 @@ CUDA_VISIBLE_DEVICES=${CUDA} python -m torch.distributed.run --standalone --npro
     --image-size 256 \
     --precision fp32 \
     --max-view 8 \
-    --kernel-size 200 \
-    --global-batch-size 16
+    --kernel-size 100 \
+    --global-batch-size 8

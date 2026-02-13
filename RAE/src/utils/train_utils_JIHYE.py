@@ -1,3 +1,4 @@
+import bisect
 import csv
 from glob import glob
 import random
@@ -448,9 +449,6 @@ class HypersimDataset(Dataset):
 
         print(f"--- Hypersim Dataset ({mode}) ---")
         print(f"Number of clean images: {len(self.clean_img_paths)}")
-    
-    def set_batch_num_view(self, num_view):
-        self.curr_batch_num_view = num_view
 
     def get_sequential_ids(self, anchor, num_frames):
         indices = []
@@ -574,7 +572,13 @@ class HypersimDataset(Dataset):
             return len(self.val_indices)
         return len(self.clean_img_paths)
     
-    def __getitem__(self, idx):
+    def __getitem__(self, item):
+        if isinstance(item, (tuple, list)):
+            idx, curr_num_view = item
+        else:
+            idx = item
+            curr_num_view = self.num_view 
+
         if self.mode == 'val':
             random.seed(idx)
             np.random.seed(idx)
@@ -586,29 +590,30 @@ class HypersimDataset(Dataset):
         
         strategy = self.view_sel.get('strategy', 'sequential')
         if strategy == 'random':
-            indices = self.get_random_ids(actual_idx, self.curr_batch_num_view)
+            indices = self.get_random_ids(actual_idx, curr_num_view)
         elif strategy == 'near_random':
-            indices = self.get_nearby_ids_random(actual_idx, self.curr_batch_num_view, self.view_sel.get('expand_ratio', 2.0))
+            indices = self.get_nearby_ids_random(actual_idx, curr_num_view, self.view_sel.get('expand_ratio', 2.0))
         elif strategy == 'sequential':
-            indices = self.get_sequential_ids(actual_idx, self.curr_batch_num_view)
+            indices = self.get_sequential_ids(actual_idx, curr_num_view)
         elif strategy == 'near_camera':
-            indices = self.get_nearby_ids_camera(actual_idx, num_frames=self.curr_batch_num_view, expand_ratio=self.view_sel.get('expand_ratio', 2.0))
+            indices = self.get_nearby_ids_camera(actual_idx, num_frames=curr_num_view, expand_ratio=self.view_sel.get('expand_ratio', 2.0))
 
-        deg_imgs, clean_imgs, gt_depths = [], [], []
+        deg_imgs, clean_imgs = [], []
         
         for i in indices:
             cp = self.clean_img_paths[i]
             
             clean_t = process_single_hdf5(cp, target_size=518, mode="crop")
+            
             deg_t = process_degraded_from_tensor(clean_t, self.kernel)
             
             clean_imgs.append(clean_t)
             deg_imgs.append(deg_t)
 
         return {
-            "deg_img": torch.stack(deg_imgs),     # [V, 3, 518, 518]
-            "clean_img": torch.stack(clean_imgs), # [V, 3, 518, 518]
-            "indices": torch.tensor(indices)
+            "deg_img": torch.stack(deg_imgs),     # [curr_num_view, 3, 518, 518]
+            "clean_img": torch.stack(clean_imgs), # [curr_num_view, 3, 518, 518]
+            "indices": torch.tensor(indices),
         }
     
 class TartanAirDataset(Dataset):
@@ -708,21 +713,32 @@ class TartanAirDataset(Dataset):
     def __len__(self):
         return len(self.clean_img_paths)
     
-    def __getitem__(self, idx):
+    def __getitem__(self, item):
+        if isinstance(item, (tuple, list)):
+            idx, curr_num_view = item
+        else:
+            idx = item
+            curr_num_view = self.num_view 
+
+        if self.mode == 'val':
+            random.seed(idx)
+            np.random.seed(idx)
+            torch.manual_seed(idx)
+            if torch.cuda.is_available():
+                torch.cuda.manual_seed(idx)
+
         actual_idx = self.val_indices[idx] if self.mode == 'val' else idx
         
         strategy = self.view_sel.get('strategy', 'sequential')
         if strategy == 'random':
-            indices = self.get_random_ids(actual_idx, self.curr_batch_num_view)
+            indices = self.get_random_ids(actual_idx, curr_num_view)
         elif strategy == 'near_random':
-            indices = self.get_nearby_ids_random(actual_idx, self.curr_batch_num_view, self.view_sel.get('expand_ratio', 2.0))
+            indices = self.get_nearby_ids_random(actual_idx, curr_num_view, self.view_sel.get('expand_ratio', 2.0))
         elif strategy == 'sequential':
-            indices = self.get_sequential_ids(actual_idx, self.curr_batch_num_view)
+            indices = self.get_sequential_ids(actual_idx, curr_num_view)
 
-        deg_list, clean_list, depth_list = [], [], []
-        
+        deg_list, clean_list = [], []
         last_valid_clean = None
-        last_valid_depth = None
 
         for i in indices:
             try:
@@ -856,7 +872,13 @@ class ETH3DDataset(Dataset):
             return len(self.val_indices)
         return len(self.clean_img_paths)
     
-    def __getitem__(self, idx):
+    def __getitem__(self, item):
+        if isinstance(item, (tuple, list)):
+            idx, curr_num_view = item
+        else:
+            idx = item
+            curr_num_view = self.num_view
+
         if self.mode == 'val':
             random.seed(idx)
             np.random.seed(idx)
@@ -868,18 +890,20 @@ class ETH3DDataset(Dataset):
         
         strategy = self.view_sel.get('strategy', 'sequential')
         if strategy == 'random':
-            indices = self.get_random_ids(actual_idx, self.num_view)
+            indices = self.get_random_ids(actual_idx, curr_num_view)
         elif strategy == 'near_random':
-            indices = self.get_nearby_ids_random(actual_idx, self.num_view, self.view_sel.get('expand_ratio', 2.0))
+            indices = self.get_nearby_ids_random(actual_idx, curr_num_view, self.view_sel.get('expand_ratio', 2.0))
         elif strategy == 'sequential':
-            indices = self.get_sequential_ids(actual_idx, self.num_view)
+            indices = self.get_sequential_ids(actual_idx, curr_num_view)
 
         deg_list, clean_list, depth_list = [], [], []
         for i in indices:
             c_t = process_single_image(self.clean_img_paths[i], target_size=518, mode="crop")
             d_t = process_eth3d_depth_bin(self.gt_depth_paths[i], target_size=518, mode="crop")
+            
             invalid_mask = (d_t <= 0) | (d_t > 100.0) | torch.isnan(d_t) | torch.isinf(d_t)
             d_t[invalid_mask] = 0.0
+            
             deg_t = process_degraded_from_tensor(c_t, self.kernel)
             
             clean_list.append(c_t)
@@ -894,26 +918,30 @@ class ETH3DDataset(Dataset):
         }
 
 class RandomViewBatchSampler:
-    def __init__(self, sampler, batch_size, dataset, min_views=1, max_views=8):
+    def __init__(self, sampler, batch_size, dataset, min_views=1, is_train=True):
         self.sampler = sampler
         self.batch_size = batch_size
         self.dataset = dataset
         self.min_views = min_views
-        self.max_views = max_views
+        self.max_views = getattr(dataset, 'num_view', 1)
+        self.is_train = is_train
         
     def __iter__(self):
-        batch = []
-        batch_count = 0 
+        batch = [] 
         for idx in self.sampler:
             batch.append(idx)
             if len(batch) == self.batch_size:
-                num_views = random.randint(self.min_views, self.max_views)
-                self.dataset.set_batch_num_view(num_views)
+                if self.is_train:
+                    num_views = random.randint(self.min_views, self.max_views)
+                else:
+                    num_views = self.max_views
                 
-                # print(f"[Batch {batch_count}] Set num_views to: {num_views}")
-                yield batch
+                yield [(idx, num_views) for idx in batch]
                 batch = []
-                batch_count += 1
+
+        if len(batch) > 0 and not getattr(self, 'drop_last', False):
+            num_views = random.randint(self.min_views, self.max_views) if self.is_train else self.max_views
+            yield [(idx, num_views) for idx in batch]
                 
     def __len__(self):
         return len(self.sampler) // self.batch_size
@@ -943,13 +971,25 @@ class ConcatDatasetWrapper(ConcatDataset):
     def __init__(self, datasets):
         super().__init__(datasets)
         self.num_view = datasets[0].num_view if datasets else 1
-        self.curr_batch_num_view = self.num_view
     
-    def set_batch_num_view(self, num_view):
-        self.curr_batch_num_view = num_view
-        for dataset in self.datasets:
-            if hasattr(dataset, 'set_batch_num_view'):
-                dataset.set_batch_num_view(num_view)
+    def __getitem__(self, item):
+        if isinstance(item, (tuple, list)):
+            idx, curr_num_view = item
+        else:
+            idx, curr_num_view = item, self.num_view
+
+        if idx < 0:
+            if -idx > len(self):
+                raise ValueError("Absolute value of index should not exceed dataset length")
+            idx = len(self) + idx
+        
+        dataset_idx = bisect.bisect_right(self.cumulative_sizes, idx)
+        if dataset_idx == 0:
+            sample_idx = idx
+        else:
+            sample_idx = idx - self.cumulative_sizes[dataset_idx - 1]
+            
+        return self.datasets[dataset_idx][(sample_idx, curr_num_view)]
 
 def create_datasets_from_config(
     cfg: DictConfig,
@@ -1029,7 +1069,7 @@ def load_dataloader(
     ds = create_datasets_from_config(cfg[mode], mode=mode, max_view=max_view, kernel_size=kernel_size)
     sampler = DistributedSampler(ds, num_replicas=world_size, rank=rank, shuffle=True)
 
-    batch_sampler = RandomViewBatchSampler(sampler, batch_size, ds, min_views=1, max_views=max_view)
+    batch_sampler = RandomViewBatchSampler(sampler, batch_size, ds, min_views=1, is_train=(mode=='train'))
     loader = DataLoader(
         ds,
         batch_sampler=batch_sampler,

@@ -11,4 +11,4 @@ CUDA_VISIBLE_DEVICES=${CUDA} python -m torch.distributed.run --standalone --npro
     --image-size 256 \
     --precision fp32 \
     --max-view 2 \
-    --kernel-size 200 --compile
+    --kernel-size 200

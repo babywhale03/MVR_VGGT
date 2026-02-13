@@ -1,6 +1,6 @@
 stage_2:
   target: stage2.models.DDTMVRM_pos_multi.DiTwDDTHead
-  save_folder: JIHYE_train_hypersim_tartanair
+  save_folder: JIHYE_train_hypersim_randomcam_tartanair_nearrandom
   exp_name: JIHYE_VGGTMVRM
   params:
     input_size: 16
@@ -52,15 +52,15 @@ training:
   # SET TRAINING EPOCHS
   epochs: 100
   # SET GLOBAL BATCH SIZE
-  global_batch_size: 4
-  grad_accum_steps: 1 # change according to your GPU memory
+  global_batch_size: 8
+  grad_accum_steps: 1 
   ema_decay: 0.9999
   # SET NUMBER OF WORKERS TO GPU_NUM*4
   num_workers: 8
   log_interval: 50
   # SET MODEL WEIGHT SAVING CKPT INTERVAL
-  checkpoint_interval: 2000 # step
-  sample_every: 2000 
+  checkpoint_interval: 1000 # step
+  sample_every: 1000
   clip_grad: 1.0
   global_seed: 42
   extract_layer: 3

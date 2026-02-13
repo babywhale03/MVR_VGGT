@@ -473,6 +473,7 @@ def main():
         optimizer.zero_grad(set_to_none=True)
         
         for step, batch in enumerate(train_loader):
+            # print(f"Number of views in this batch: {batch['deg_img'].shape[1]}")
             clean_img = batch["clean_img"] # [B, V, 3, 392, 518]
             deg_img = batch["deg_img"]     # [B, V, 3, 392, 518]
             batch_size = clean_img.shape[0]

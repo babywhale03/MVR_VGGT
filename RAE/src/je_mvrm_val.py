@@ -41,11 +41,7 @@ import torchvision.transforms as T
 import torch.nn.functional as F
 from torchvision.utils import make_grid, save_image
 
-vggt_path = "/mnt/dataset1/jaeeun/MVR/vggt"
-if vggt_path not in sys.path:
-    sys.path.append(vggt_path)
-
-from vggt.models.vggt import VGGT
+from vggt.vggt.models.vggt import VGGT
 
 ##### model imports
 # from stage1 import RAE
@@ -173,6 +169,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--compile", action="store_true", help="Use torch compile (for rae.encode and model.forward).")
     parser.add_argument("--ckpt", type=str, default=None, help="Optional checkpoint path to resume training.")
     parser.add_argument("--global-seed", type=int, default=None, help="Override training.global_seed from the config.")
+    parser.add_argument("--max-views", type=int, default=4, help="Maximum number of views to use during training.")
+    parser.add_argument("--kernel-size", type=int, default=100, help="Number of pixels in the square kernel for cost volume.")
     args = parser.parse_args()
     return args
 
@@ -356,11 +354,11 @@ def main():
     # ])
     
     train_loader, train_sampler = load_dataloader(
-        data_cfg, micro_batch_size, num_workers, rank, world_size, mode='train'
+        data_cfg, micro_batch_size, num_workers, rank, world_size, mode='train', max_views=args.max_views, kernel_size=args.kernel_size
     )
 
     val_loader, val_sampler = load_dataloader(
-        data_cfg, micro_batch_size, num_workers, rank, world_size, mode='val'
+        data_cfg, micro_batch_size, num_workers, rank, world_size, mode='val', max_views=args.max_views, kernel_size=args.kernel_size
     )
 
     # loader, sampler = prepare_latent_dataloader(
@@ -503,6 +501,7 @@ def main():
         optimizer.zero_grad(set_to_none=True)
         
         for step, batch in enumerate(train_loader):
+            print(f"View number in batch: {batch['deg_img'].shape[1]}")
             clean_img = batch["clean_img"] # [B, V, 3, 392, 518]
             deg_img = batch["deg_img"]     # [B, V, 3, 392, 518]
             gt_depth = batch["gt_depth"]   # [B, V, 1, 392, 518]

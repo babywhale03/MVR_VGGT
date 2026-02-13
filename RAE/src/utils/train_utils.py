@@ -1,3 +1,4 @@
+import bisect
 import csv
 from glob import glob
 import random
@@ -21,15 +22,8 @@ import re
 import h5py
 from .view_sel_near_camera import compute_ranking
 
-motionblur_path = "/mnt/dataset1/jaeeun/MVR"
-if motionblur_path not in sys.path:
-    sys.path.append(motionblur_path)
 from motionblur.motionblur import Kernel 
-
-vggt_path = "/mnt/dataset1/jaeeun/MVR/vggt"
-if vggt_path not in sys.path:
-    sys.path.append(vggt_path)
-from vggt.utils.load_fn import *
+from vggt.vggt.utils.load_fn import *
 
 def parse_configs(config: Union[DictConfig, str]) -> Tuple[DictConfig, DictConfig, DictConfig, DictConfig, DictConfig, DictConfig, DictConfig]:
     """Load a config file and return component sections as DictConfigs."""
@@ -115,233 +109,14 @@ def prepare_dataloader(
     )
     return loader, sampler
 
-
-# class LatentDataset(Dataset):
-#     def __init__(self, deg_img_paths: List[str], data_path: str):
-#         # breakpoint()
-#         self.data_path = Path(data_path)
-#         self.latent_files = sorted(list(self.data_path.rglob("*.pt")))
-
-#         self.deg_img_paths = deg_img_paths
-        
-#         if not self.latent_files:
-#             raise FileNotFoundError(f"No .pt files found in {data_path}")
-
-#     def __len__(self):
-#         print(f"len latent files: {len(self.latent_files)}, len deg img paths: {len(self.deg_img_paths)}")
-#         return min(len(self.latent_files), len(self.deg_img_paths)) # 15008
-
-#     def __getitem__(self, idx):
-#         latent_path = self.latent_files[idx]
-#         clean_latent = torch.load(latent_path, map_location="cpu")
-
-#         deg_img_path = self.deg_img_paths[idx]
-        
-#         if clean_latent.ndim == 4:
-#             clean_latent = clean_latent.squeeze(0)
-            
-#         return deg_img_path, clean_latent # (S, P, 2C) = [1, 1041, 2048]
-
-# class LatentDataset(Dataset):
-#     def __init__(self, deg_img_paths: List[str], data_path: str):
-#         # breakpoint()
-#         self.data_path = Path(data_path)
-        
-#         self.deg_img_dict = {}
-#         for p in deg_img_paths:
-#             path_obj = Path(p)
-#             parts = path_obj.parts
-            
-#             scene = parts[-4]               # ai_001_002
-#             cam = parts[-3].split('_final')[0] # scene_cam_00
-#             frame = path_obj.stem.replace('_color', '') # frame_0000
-            
-#             key = f"{scene}_{cam}_{frame}"
-#             self.deg_img_dict[key] = p
-
-#         # breakpoint()
-#         all_latent_files = list(self.data_path.rglob("*.pt"))
-        
-#         self.valid_pairs = []
-#         for lp in all_latent_files:
-#             path_obj = Path(lp)
-#             parts = path_obj.parts
-            
-#             scene = parts[-4]               # ai_004_003
-#             cam = parts[-3].split('_final')[0] # scene_cam_00
-#             frame = parts[-2]               # frame_0000
-            
-#             key = f"{scene}_{cam}_{frame}"
-            
-#             if key in self.deg_img_dict:
-#                 self.valid_pairs.append({
-#                     "latent_path": lp,
-#                     "deg_img_path": self.deg_img_dict[key]
-#                 })
-
-#         self.valid_pairs.sort(key=lambda x: x["deg_img_path"])
-
-#         if not self.valid_pairs:
-#             raise FileNotFoundError(f"Can't find any matching latent and degraded image pairs in {data_path}")
-        
-#         print(f"{len(self.valid_pairs)} pairs of latent and degraded images found.")
-
-#     def __len__(self):
-#         return len(self.valid_pairs)
-
-#     def __getitem__(self, idx):
-#         pair = self.valid_pairs[idx]
-        
-#         clean_latent = torch.load(pair["latent_path"], map_location="cpu")
-#         if clean_latent.ndim == 4:
-#             clean_latent = clean_latent.squeeze(0)
-            
-#         deg_img_path = pair["deg_img_path"]
-        
-#         return deg_img_path, clean_latent
-
-### 전체 데이터셋 불러오기 
-# class LatentDataset(Dataset):
-#     def __init__(self, clean_img_paths: str, deg_img_paths: str, gt_depth_paths: str):
-#         self.clean_img_paths = sorted(glob(os.path.join(clean_img_paths, "ai_*", "images", "scene_cam_*_final_hdf5", "frame.*.color.hdf5")))
-#         self.gt_depth_paths = sorted(glob(os.path.join(gt_depth_paths, "ai_*", "images", "scene_cam_*_geometry_hdf5", "frame.*.depth_meters.hdf5")))
-        
-#         if deg_img_paths is not None:
-#             self.deg_img_paths = sorted(glob(os.path.join(deg_img_paths, "ai_*", "scene_cam_*_final_hdf5", "images", "frame_*_color.png")))
-#         else:
-#             self.deg_img_paths = None
-#             self.blur_intensity = 0.1
-#             self.kernel_size = 50
-#             self.kernel = Kernel(size=(self.kernel_size, self.kernel_size), intensity=self.blur_intensity)
-        
-#         print(f"Number of clean images: {len(self.clean_img_paths)}")
-#         print(f"Number of degraded images: {len(self.deg_img_paths) if self.deg_img_paths is not None else 0}")
-#         print(f"Number of gt depth maps: {len(self.gt_depth_paths)}")
-
-#     def __len__(self):
-#         return len(self.deg_img_paths) if self.deg_img_paths is not None else len(self.clean_img_paths)
-    
-#     def __getitem__(self, idx):
-#         clean_p = self.clean_img_paths[idx]
-#         if self.deg_img_paths is not None:
-#             deg_p = self.deg_img_paths[idx]
-#         else:
-#             deg_p = None
-#         depth_p = self.gt_depth_paths[idx]
-
-#         clean_tensor = process_single_hdf5(clean_p, target_size=518, mode="crop")  # [3, 518, 518]
-#         depth_tensor = process_single_depth_hdf5(depth_p, target_size=518, mode="crop")  # [1, 518, 518]
-
-#         if self.deg_img_paths is not None:
-#             deg_tensor = process_single_image(deg_p, target_size=518, mode="crop")      # [3, 518, 518]
-#         else:
-#             deg_tensor = process_degraded_from_tensor(clean_tensor, self.kernel)
-
-#         return {
-#             "deg_img": deg_tensor,     # [3, H, W]
-#             "clean_img": clean_tensor, # [3, H, W]
-#             "gt_depth": depth_tensor,  # [1, H, W]
-#         }
-
-
-# clean input images
-# class LatentDataset(Dataset):
-#     def __init__(self, data_path: str):
-#         self.data_path = Path(data_path)
-#         self.latent_files = sorted(list(self.data_path.rglob("*.pt")))
-        
-#         if not self.latent_files:
-#             raise FileNotFoundError(f"No .pt files found in {data_path}")
-    
-#     def __len__(self):
-#         return len(self.latent_files)
-
-#     def __getitem__(self, idx):
-#         latent_path = self.latent_files[idx]
-#         clean_latent = torch.load(latent_path, map_location="cpu")
-
-        
-#         if clean_latent.ndim == 4:
-#             clean_latent = clean_latent.squeeze(0)
-            
-#         return clean_latent
-    
-### ai_010까지 필터링
-class LatentDataset(Dataset):
-    def __init__(self, clean_img_paths: str, deg_img_paths: str, gt_depth_paths: str):
-        all_clean = sorted(glob(os.path.join(clean_img_paths, "ai_*", "images", "scene_cam_*_final_hdf5", "frame.*.color.hdf5")))
-        all_depth = sorted(glob(os.path.join(gt_depth_paths, "ai_*", "images", "scene_cam_*_geometry_hdf5", "frame.*.depth_meters.hdf5")))
-        
-        exclude_patterns = [
-            r"ai_003_.*_cam_00",
-            r"ai_004_.*_cam_01"
-        ]
-
-        def is_valid(path):
-            match = re.search(r'ai_(\d{3})', path)
-            if not match:
-                return False
-            
-            scene_idx = int(match.group(1))
-            if not (1 <= scene_idx <= 10):
-                return False
-            
-            for pattern in exclude_patterns:
-                if re.search(pattern, path):
-                    return False
-            
-            return True
-
-        self.clean_img_paths = [p for p in all_clean if is_valid(p)]
-        self.gt_depth_paths = [p for p in all_depth if is_valid(p)]
-
-        if deg_img_paths is not None:
-            all_deg = sorted(glob(os.path.join(deg_img_paths, "ai_*", "scene_cam_*_final_hdf5", "images", "frame_*_color.png")))
-            self.deg_img_paths = [p for p in all_deg if is_valid(p)]
-        else:
-            self.deg_img_paths = None
-            self.blur_intensity = 0.1
-            self.kernel_size = 50
-            self.kernel = Kernel(size=(self.kernel_size, self.kernel_size), intensity=self.blur_intensity)
-
-        print(f"--- Dataset Filtered ---")
-        print(f"Number of clean images: {len(self.clean_img_paths)}")
-        print(f"Number of degraded images: {len(self.deg_img_paths) if self.deg_img_paths is not None else 0}")
-        print(f"Number of gt depth maps: {len(self.gt_depth_paths)}")
-
-    def __len__(self):
-        return len(self.deg_img_paths) if self.deg_img_paths is not None else len(self.clean_img_paths)
-    
-    def __getitem__(self, idx):
-        clean_p = self.clean_img_paths[idx]
-        if self.deg_img_paths is not None:
-            deg_p = self.deg_img_paths[idx]
-        else:
-            deg_p = None
-        depth_p = self.gt_depth_paths[idx]
-
-        clean_tensor = process_single_hdf5(clean_p, target_size=518, mode="crop")  # [3, 518, 518]
-        depth_tensor = process_single_depth_hdf5(depth_p, target_size=518, mode="crop")  # [1, 518, 518]
-
-        if self.deg_img_paths is not None:
-            deg_tensor = process_single_image(deg_p, target_size=518, mode="crop")      # [3, 518, 518]
-        else:
-            deg_tensor = process_degraded_from_tensor(clean_tensor, self.kernel)
-
-        return {
-            "deg_img": deg_tensor,     # [3, H, W]
-            "clean_img": clean_tensor, # [3, H, W]
-            "gt_depth": depth_tensor,  # [1, H, W]
-        }
-
 class HypersimDataset(Dataset):
-    def __init__(self, clean_img_paths: str, gt_depth_paths: str, annotation_path: str = None, mode: str = 'train', num_eval_img: int = 100, num_view: int = 1, view_sel: dict = None):
+    def __init__(self, clean_img_paths: str, gt_depth_paths: str, annotation_path: str = None, mode: str = 'train', num_eval_img: int = 100, num_view: int = 1, view_sel: dict = None, kernel_size: int = 100):
         self.mode = mode
         self.num_eval_img = num_eval_img
         self.num_view = num_view
         self.view_sel = view_sel
         self.curr_batch_num_view = num_view
-        self.kernel_size = 100
+        self.kernel_size = kernel_size
 
         def generate_paths(anns, root, sub_folder, suffix):
             return sorted([
@@ -458,10 +233,7 @@ class HypersimDataset(Dataset):
         print(f"--- Hypersim Dataset ({mode}) ---")
         print(f"Number of clean images: {len(self.clean_img_paths)}")
         print(f"Number of gt depth maps: {len(self.gt_depth_paths)}")
-    
-    def set_batch_num_view(self, num_view):
-        self.curr_batch_num_view = num_view
-
+        
     def get_sequential_ids(self, anchor, num_frames):
         indices = []
         current_scene = self.scene_names[anchor]
@@ -622,7 +394,13 @@ class HypersimDataset(Dataset):
             return len(self.val_indices)
         return len(self.clean_img_paths)
     
-    def __getitem__(self, idx):
+    def __getitem__(self, item):
+        if isinstance(item, (tuple, list)):
+            idx, curr_num_view = item
+        else:
+            idx = item
+            curr_num_view = self.num_view 
+
         if self.mode == 'val':
             random.seed(idx)
             np.random.seed(idx)
@@ -634,13 +412,13 @@ class HypersimDataset(Dataset):
         
         strategy = self.view_sel.get('strategy', 'sequential')
         if strategy == 'random':
-            indices = self.get_random_ids(actual_idx, self.curr_batch_num_view)
+            indices = self.get_random_ids(actual_idx, curr_num_view)
         elif strategy == 'near_random':
-            indices = self.get_nearby_ids_random(actual_idx, self.curr_batch_num_view, self.view_sel.get('expand_ratio', 2.0))
+            indices = self.get_nearby_ids_random(actual_idx, curr_num_view, self.view_sel.get('expand_ratio', 2.0))
         elif strategy == 'sequential':
-            indices = self.get_sequential_ids(actual_idx, self.curr_batch_num_view)
+            indices = self.get_sequential_ids(actual_idx, curr_num_view)
         elif strategy == 'near_camera':
-            indices = self.get_nearby_ids_camera(actual_idx, num_frames=self.curr_batch_num_view, expand_ratio=self.view_sel.get('expand_ratio', 2.0))
+            indices = self.get_nearby_ids_camera(actual_idx, num_frames=curr_num_view, expand_ratio=self.view_sel.get('expand_ratio', 2.0))
 
         deg_imgs, clean_imgs, gt_depths = [], [], []
         
@@ -658,19 +436,19 @@ class HypersimDataset(Dataset):
             deg_imgs.append(deg_t)
 
         return {
-            "deg_img": torch.stack(deg_imgs),     # [V, 3, 518, 518]
-            "clean_img": torch.stack(clean_imgs), # [V, 3, 518, 518]
-            "gt_depth": torch.stack(gt_depths),   # [V, 1, 518, 518]
-            "indices": torch.tensor(indices)
+            "deg_img": torch.stack(deg_imgs),     # [curr_num_view, 3, 518, 518]
+            "clean_img": torch.stack(clean_imgs), # [curr_num_view, 3, 518, 518]
+            "gt_depth": torch.stack(gt_depths),   # [curr_num_view, 1, 518, 518]
+            "indices": torch.tensor(indices),
         }
     
 class TartanAirDataset(Dataset):
-    def __init__(self, clean_img_paths: str, gt_depth_paths: str, annotation_path: str = None, mode: str = 'train', num_eval_img: int = 100, num_view: int = 1, view_sel: dict = None):
+    def __init__(self, clean_img_paths: str, gt_depth_paths: str, annotation_path: str = None, mode: str = 'train', num_eval_img: int = 100, num_view: int = 1, view_sel: dict = None, kernel_size: int = 100):
         self.mode = mode
         self.num_view = num_view
         self.view_sel = view_sel
         self.curr_batch_num_view = num_view
-        self.kernel_size = 100
+        self.kernel_size = kernel_size
 
         self.clean_img_paths = sorted(glob(os.path.join(clean_img_paths, "*", "Easy", "*", "image_left", "*.png")))
         self.gt_depth_paths = sorted(glob(os.path.join(gt_depth_paths, "*", "Easy", "*", "depth_left", "*.npy")))
@@ -693,9 +471,6 @@ class TartanAirDataset(Dataset):
         print(f"Number of clean images: {len(self.clean_img_paths)}")
         print(f"Number of gt depth maps: {len(self.gt_depth_paths)}")
 
-    def set_batch_num_view(self, num_view):
-        self.curr_batch_num_view = num_view
-    
     def get_sequential_ids(self, anchor, num_frames):
         indices = []
         current_scene = self.scene_names[anchor]
@@ -764,19 +539,31 @@ class TartanAirDataset(Dataset):
     def __len__(self):
         return len(self.clean_img_paths)
     
-    def __getitem__(self, idx):
+    def __getitem__(self, item):
+        if isinstance(item, (tuple, list)):
+            idx, curr_num_view = item
+        else:
+            idx = item
+            curr_num_view = self.num_view 
+
+        if self.mode == 'val':
+            random.seed(idx)
+            np.random.seed(idx)
+            torch.manual_seed(idx)
+            if torch.cuda.is_available():
+                torch.cuda.manual_seed(idx)
+
         actual_idx = self.val_indices[idx] if self.mode == 'val' else idx
         
         strategy = self.view_sel.get('strategy', 'sequential')
         if strategy == 'random':
-            indices = self.get_random_ids(actual_idx, self.curr_batch_num_view)
+            indices = self.get_random_ids(actual_idx, curr_num_view)
         elif strategy == 'near_random':
-            indices = self.get_nearby_ids_random(actual_idx, self.curr_batch_num_view, self.view_sel.get('expand_ratio', 2.0))
+            indices = self.get_nearby_ids_random(actual_idx, curr_num_view, self.view_sel.get('expand_ratio', 2.0))
         elif strategy == 'sequential':
-            indices = self.get_sequential_ids(actual_idx, self.curr_batch_num_view)
+            indices = self.get_sequential_ids(actual_idx, curr_num_view)
 
         deg_list, clean_list, depth_list = [], [], []
-        
         last_valid_clean = None
         last_valid_depth = None
 
@@ -811,13 +598,13 @@ class TartanAirDataset(Dataset):
         }
     
 class ETH3DDataset(Dataset):
-    def __init__(self, clean_img_paths: str, gt_depth_paths: str, annotation_path: str = None, mode: str = 'train', num_eval_img: int = 100, num_view: int = 1, view_sel: dict = None):
+    def __init__(self, clean_img_paths: str, gt_depth_paths: str, annotation_path: str = None, mode: str = 'train', num_eval_img: int = 100, num_view: int = 1, view_sel: dict = None, kernel_size: int = 100):
         self.mode = mode
         self.num_eval_img = num_eval_img
         self.num_view = num_view
         self.view_sel = view_sel
         self.curr_batch_num_view = num_view
-        self.kernel_size = 100
+        self.kernel_size = kernel_size
 
         self.clean_img_paths = sorted(glob(os.path.join(clean_img_paths, "*", "images", "dslr_images", "*.JPG")))
         self.gt_depth_paths = sorted(glob(os.path.join(gt_depth_paths, "*", "ground_truth_depth", "dslr_images", "*.JPG")))
@@ -842,9 +629,6 @@ class ETH3DDataset(Dataset):
         print(f"--- ETH3D Dataset ({mode}) ---")
         print(f"Number of clean images: {len(self.clean_img_paths)}")
         print(f"Number of gt depth maps: {len(self.gt_depth_paths)}")
-        
-    def set_batch_num_view(self, num_view):
-        self.curr_batch_num_view = num_view
 
     def get_sequential_ids(self, anchor, num_frames):
         indices = []
@@ -916,7 +700,13 @@ class ETH3DDataset(Dataset):
             return len(self.val_indices)
         return len(self.clean_img_paths)
     
-    def __getitem__(self, idx):
+    def __getitem__(self, item):
+        if isinstance(item, (tuple, list)):
+            idx, curr_num_view = item
+        else:
+            idx = item
+            curr_num_view = self.num_view
+
         if self.mode == 'val':
             random.seed(idx)
             np.random.seed(idx)
@@ -928,18 +718,20 @@ class ETH3DDataset(Dataset):
         
         strategy = self.view_sel.get('strategy', 'sequential')
         if strategy == 'random':
-            indices = self.get_random_ids(actual_idx, self.num_view)
+            indices = self.get_random_ids(actual_idx, curr_num_view)
         elif strategy == 'near_random':
-            indices = self.get_nearby_ids_random(actual_idx, self.num_view, self.view_sel.get('expand_ratio', 2.0))
+            indices = self.get_nearby_ids_random(actual_idx, curr_num_view, self.view_sel.get('expand_ratio', 2.0))
         elif strategy == 'sequential':
-            indices = self.get_sequential_ids(actual_idx, self.num_view)
+            indices = self.get_sequential_ids(actual_idx, curr_num_view)
 
         deg_list, clean_list, depth_list = [], [], []
         for i in indices:
             c_t = process_single_image(self.clean_img_paths[i], target_size=518, mode="crop")
             d_t = process_eth3d_depth_bin(self.gt_depth_paths[i], target_size=518, mode="crop")
+            
             invalid_mask = (d_t <= 0) | (d_t > 100.0) | torch.isnan(d_t) | torch.isinf(d_t)
             d_t[invalid_mask] = 0.0
+            
             deg_t = process_degraded_from_tensor(c_t, self.kernel)
             
             clean_list.append(c_t)
@@ -954,70 +746,67 @@ class ETH3DDataset(Dataset):
         }
 
 class RandomViewBatchSampler:
-    def __init__(self, sampler, batch_size, dataset, min_views=1):
+    def __init__(self, sampler, batch_size, dataset, min_views=1, is_train=True):
         self.sampler = sampler
         self.batch_size = batch_size
         self.dataset = dataset
         self.min_views = min_views
-        self.max_views = dataset.num_view
+        self.max_views = getattr(dataset, 'num_view', 1)
+        self.is_train = is_train
         
     def __iter__(self):
-        batch = []
-        batch_count = 0 
+        batch = [] 
         for idx in self.sampler:
             batch.append(idx)
             if len(batch) == self.batch_size:
-                num_views = random.randint(self.min_views, self.max_views)
-                self.dataset.set_batch_num_view(num_views)
+                if self.is_train:
+                    num_views = random.randint(self.min_views, self.max_views)
+                else:
+                    num_views = self.max_views
                 
-                # print(f"[Batch {batch_count}] Set num_views to: {num_views}")
-                yield batch
+                yield [(idx, num_views) for idx in batch]
                 batch = []
-                batch_count += 1
+
+        if len(batch) > 0 and not getattr(self, 'drop_last', False):
+            num_views = random.randint(self.min_views, self.max_views) if self.is_train else self.max_views
+            yield [(idx, num_views) for idx in batch]
                 
     def __len__(self):
         return len(self.sampler) // self.batch_size
-
-def prepare_latent_dataloader(
-    clean_img_paths: Path,
-    deg_img_paths: Path,
-    gt_depth_paths: Path,
-    batch_size: int,
-    workers: int,
-    rank: int,
-    world_size: int,
-) -> Tuple[DataLoader, DistributedSampler]:
-    latent_dataset = LatentDataset(clean_img_paths, deg_img_paths, gt_depth_paths)
-    sampler = DistributedSampler(latent_dataset, num_replicas=world_size, rank=rank, shuffle=True)
-    loader = DataLoader(
-        latent_dataset,
-        batch_size=batch_size,
-        sampler=sampler,
-        num_workers=workers,
-        pin_memory=True,
-        drop_last=True,
-    )
-    return loader, sampler
 
 class ConcatDatasetWrapper(ConcatDataset):
     def __init__(self, datasets):
         super().__init__(datasets)
         self.num_view = datasets[0].num_view if datasets else 1
-        self.curr_batch_num_view = self.num_view
     
-    def set_batch_num_view(self, num_view):
-        self.curr_batch_num_view = num_view
-        for dataset in self.datasets:
-            if hasattr(dataset, 'set_batch_num_view'):
-                dataset.set_batch_num_view(num_view)
+    def __getitem__(self, item):
+        if isinstance(item, (tuple, list)):
+            idx, curr_num_view = item
+        else:
+            idx, curr_num_view = item, self.num_view
+
+        if idx < 0:
+            if -idx > len(self):
+                raise ValueError("Absolute value of index should not exceed dataset length")
+            idx = len(self) + idx
+        
+        dataset_idx = bisect.bisect_right(self.cumulative_sizes, idx)
+        if dataset_idx == 0:
+            sample_idx = idx
+        else:
+            sample_idx = idx - self.cumulative_sizes[dataset_idx - 1]
+            
+        return self.datasets[dataset_idx][(sample_idx, curr_num_view)]
 
 def create_datasets_from_config(
     cfg: DictConfig,
-    mode: str = 'train'
+    mode: str = 'train',
+    max_views: int = 8,
+    kernel_size: int = 100,
 ) -> Tuple[Dataset, Dataset]:
     active_dataset = cfg.get('dataset', [])
     library = cfg.get('library', {})
-    num_view = cfg.get('num_view', 1)
+    num_view = max_views
 
     all_datasets = []
     
@@ -1043,7 +832,8 @@ def create_datasets_from_config(
                 mode=mode,
                 num_eval_img=num_eval_img,
                 num_view=num_view,
-                view_sel=view_sel
+                view_sel=view_sel,
+                kernel_size=kernel_size
             )
         elif name == "tartanair":
             ds = TartanAirDataset(
@@ -1053,7 +843,8 @@ def create_datasets_from_config(
                 mode=mode,
                 num_eval_img=num_eval_img,
                 num_view=num_view,
-                view_sel=view_sel
+                view_sel=view_sel,
+                kernel_size=kernel_size
             )
         elif name == "eth3d":
             ds = ETH3DDataset(
@@ -1063,7 +854,8 @@ def create_datasets_from_config(
                 mode=mode,
                 num_eval_img=num_eval_img,
                 num_view=num_view,
-                view_sel=view_sel
+                view_sel=view_sel,
+                kernel_size=kernel_size
             )
         all_datasets.append(ds)
     
@@ -1081,13 +873,15 @@ def load_dataloader(
     workers: int,
     rank: int,
     world_size: int,
-    mode: str='train'
+    mode: str='train',
+    max_views: int=8,
+    kernel_size: int=100,
 ) -> Tuple[DataLoader, DistributedSampler]:
     # breakpoint()
-    ds = create_datasets_from_config(cfg[mode], mode=mode)
+    ds = create_datasets_from_config(cfg[mode], mode=mode, max_views=max_views, kernel_size=kernel_size)
     sampler = DistributedSampler(ds, num_replicas=world_size, rank=rank, shuffle=True)
 
-    batch_sampler = RandomViewBatchSampler(sampler, batch_size, ds, min_views=1)
+    batch_sampler = RandomViewBatchSampler(sampler, batch_size, ds, min_views=1, is_train=(mode=='train'))
     loader = DataLoader(
         ds,
         batch_sampler=batch_sampler,

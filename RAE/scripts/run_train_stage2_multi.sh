@@ -12,5 +12,6 @@ CUDA_VISIBLE_DEVICES=${CUDA} python -m torch.distributed.run --standalone --npro
     RAE/src/je_mvrm_val.py --config /mnt/dataset1/jaeeun/MVR_vggt/RAE/configs/mvrm/DiTDH-XL_DINOv2-B_Multi.yaml \
     --results-dir RAE/ckpts/ \
     --image-size 256 \
-    --precision fp32 \
-    --wandb --compile
+    --max-views 4 \
+    --kernel-size 100 \
+    --precision fp32 --wandb

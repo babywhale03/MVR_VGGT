@@ -38,7 +38,7 @@ def load_and_preprocess_images_square(image_path_list, target_size=1024):
 
     images = []
     original_coords = []  # Renamed from position_info to be more descriptive
-    to_tensor = TF.ToTensor()
+    to_tensor = T.functional.ToTensor()
 
     for image_path in image_path_list:
         # Open image
@@ -137,7 +137,7 @@ def load_and_preprocess_images(image_path_list, mode="crop"):
 
     images = []
     shapes = set()
-    to_tensor = TF.ToTensor()
+    to_tensor = T.functional.ToTensor()
     target_size = 518
 
     # First process all images and collect their shapes
@@ -512,6 +512,65 @@ def process_single_hdf5(image_path, target_size=518, mode="crop"):
 
     return img_tensor # [3, target_size, target_size]
 
+def process_clean_deg_tensors_from_hdf5(image_path, kernel=None, target_size=518, mode="crop"):
+    gamma, inv_gamma = 1.0 / 2.2, 2.2
+    percentile = 90
+    brightness_desired = 0.8
+    eps = 0.0001
+
+    with h5py.File(image_path, "r") as f:
+        rgb_color = f["dataset"][:].astype(np.float32) # [H, W, 3]
+
+    entity_path = image_path.replace("final_hdf5", "geometry_hdf5").replace(".color.hdf5", ".render_entity_id.hdf5")
+    if os.path.exists(entity_path):
+        with h5py.File(entity_path, "r") as f:
+            valid_mask = f["dataset"][:] != -1
+    else:
+        valid_mask = np.ones(rgb_color.shape[:2], dtype=bool)
+
+    brightness = 0.3 * rgb_color[..., 0] + 0.59 * rgb_color[..., 1] + 0.11 * rgb_color[..., 2]
+    brightness_valid = brightness[valid_mask]
+    
+    if len(brightness_valid) == 0 or np.percentile(brightness_valid, percentile) < eps:
+        scale = 1.0
+    else:
+        current_p = np.percentile(brightness_valid, percentile)
+        scale = np.power(brightness_desired, inv_gamma) / current_p
+
+    rgb_tm = np.power(np.maximum(scale * rgb_color, 0), gamma)
+    rgb_tm = np.clip(rgb_tm, 0, 1)
+
+    clean_tensor = torch.from_numpy(rgb_tm).permute(2, 0, 1) 
+
+    if kernel is not None:
+        img_pil = T.functional.to_pil_image(clean_tensor)
+        img_pil_deg = kernel.applyTo(img_pil, keep_image_dim=True)
+        deg_tensor = T.functional.to_tensor(img_pil_deg)
+    else:
+        deg_tensor = clean_tensor.clone()
+
+    _, h, w = clean_tensor.shape
+    new_width = target_size
+    new_height = round(h * (new_width / w) / 14) * 14
+    
+    combined = torch.stack([clean_tensor, deg_tensor]) # [2, 3, H, W]
+    combined = T.functional.resize(combined, [new_height, new_width], 
+                         interpolation=T.InterpolationMode.BICUBIC, antialias=True)
+
+    if mode == "crop" and new_height > target_size:
+        start_y = (new_height - target_size) // 2
+        combined = combined[:, :, start_y : start_y + target_size, :]
+        
+    elif mode == "pad" and (combined.shape[2] < target_size or combined.shape[3] < target_size):
+        h_pad = target_size - combined.shape[2]
+        w_pad = target_size - combined.shape[3]
+        combined = F.pad(combined, (w_pad//2, w_pad-w_pad//2, h_pad//2, h_pad-h_pad//2), value=1.0)
+
+    final_clean = combined[0]
+    final_deg = combined[1]
+
+    return final_clean, final_deg
+
 def process_single_hdf5_dit4sr(image_path, target_size=512, mode="crop"):
     gamma, inv_gamma = 1.0 / 2.2, 2.2
     percentile = 90
@@ -700,6 +759,46 @@ def process_single_image(image_path, target_size=518, mode="crop"):
         )
 
     return img_tensor
+
+def process_clean_deg_tensors_from_image(image_path, kernel=None, target_size=518, mode="crop"):
+    img = Image.open(image_path)
+
+    if img.mode == "RGBA":
+        background = Image.new("RGBA", img.size, (255, 255, 255, 255))
+        img = Image.alpha_composite(background, img).convert("RGB")
+    else:
+        img = img.convert("RGB")
+
+    clean_img = img
+    if kernel is not None:
+        deg_img = kernel.applyTo(clean_img, keep_image_dim=True)
+    else:
+        deg_img = clean_img.copy()
+
+    clean_tensor = T.functional.to_tensor(clean_img)
+    deg_tensor = T.functional.to_tensor(deg_img)
+
+    _, h, w = clean_tensor.shape
+    new_width = target_size
+    new_height = round(h * (new_width / w) / 14) * 14
+    
+    combined = torch.stack([clean_tensor, deg_tensor]) # [2, 3, H, W]
+    combined = T.functional.resize(combined, [new_height, new_width], 
+                         interpolation=T.InterpolationMode.BICUBIC, antialias=True)
+
+    if mode == "crop" and new_height > target_size:
+        start_y = (new_height - target_size) // 2
+        combined = combined[:, :, start_y : start_y + target_size, :]
+        
+    elif mode == "pad" and (combined.shape[2] < target_size or combined.shape[3] < target_size):
+        h_pad = target_size - combined.shape[2]
+        w_pad = target_size - combined.shape[3]
+        combined = F.pad(combined, (w_pad//2, w_pad-w_pad//2, h_pad//2, h_pad-h_pad//2), value=0.0)
+
+    final_clean = combined[0]
+    final_deg = combined[1]
+
+    return final_clean, final_deg
 
 def process_degraded_from_tensor(clean_tensor, kernel):
     # clean_tensor shape: (3, H, W) with values in [0, 1] to be converted to PIL Image

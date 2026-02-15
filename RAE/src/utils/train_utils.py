@@ -421,25 +421,43 @@ class HypersimDataset(Dataset):
             indices = self.get_nearby_ids_camera(actual_idx, num_frames=curr_num_view, expand_ratio=self.view_sel.get('expand_ratio', 2.0))
 
         deg_imgs, clean_imgs, gt_depths = [], [], []
+        valid_indices = []
         
         for i in indices:
             cp = self.clean_img_paths[i]
             dp = self.gt_depth_paths[i]
             
-            clean_t = process_single_hdf5(cp, target_size=518, mode="crop")
-            depth_t = process_single_depth_hdf5(dp, target_size=518, mode="crop")
-            
-            deg_t = process_degraded_from_tensor(clean_t, self.kernel)
-            
-            clean_imgs.append(clean_t)
-            gt_depths.append(depth_t)
-            deg_imgs.append(deg_t)
+            try:
+                clean_t, deg_t = process_clean_deg_tensors_from_hdf5(
+                    cp, 
+                    kernel=self.kernel, 
+                    target_size=518, 
+                    mode="crop"
+                )
+                
+                depth_t = process_single_depth_hdf5(dp, target_size=518, mode="crop")
+                
+            except Exception as e:
+                print(f"[Warning] Error processing frame {cp}: {e}")
+                continue
 
+            if clean_t is None or deg_t is None or depth_t is None:
+                print(f"[Warning] Failed to load/process frame {cp} or {dp}. Skipping.")
+                continue 
+        
+            clean_imgs.append(clean_t)
+            deg_imgs.append(deg_t)    
+            gt_depths.append(depth_t)
+            valid_indices.append(i)
+
+        if len(clean_imgs) == 0:
+            raise RuntimeError(f"Failed to load any vaild frames")
+        
         return {
             "deg_img": torch.stack(deg_imgs),     # [curr_num_view, 3, 518, 518]
             "clean_img": torch.stack(clean_imgs), # [curr_num_view, 3, 518, 518]
             "gt_depth": torch.stack(gt_depths),   # [curr_num_view, 1, 518, 518]
-            "indices": torch.tensor(indices),
+            "indices": torch.tensor(valid_indices),
         }
     
 class TartanAirDataset(Dataset):
@@ -565,30 +583,43 @@ class TartanAirDataset(Dataset):
 
         deg_list, clean_list, depth_list = [], [], []
         last_valid_clean = None
+        last_valid_deg = None
         last_valid_depth = None
 
         for i in indices:
             try:
-                c_t = process_single_image(self.clean_img_paths[i], target_size=518, mode="crop")
+                c_t, deg_t = process_clean_deg_tensors_from_image(
+                    self.clean_img_paths[i], 
+                    kernel=self.kernel, 
+                    target_size=518, 
+                    mode="crop"
+                )
                 d_t = process_single_depth_npy(self.gt_depth_paths[i], target_size=518, mode="crop")
                 
-                if c_t is None or d_t is None:
+                if c_t is None or deg_t is None or d_t is None:
                     raise ValueError("Loaded data is None")
-                    
-                last_valid_clean, last_valid_depth = c_t, d_t
+                
+                last_valid_clean, last_valid_deg, last_valid_depth = c_t, deg_t, d_t
                 
             except Exception as e:
                 print(f"[Warning] Failed to load frame {self.clean_img_paths[i]}: {e}")
+                
                 if last_valid_clean is not None:
-                    c_t, d_t = last_valid_clean, last_valid_depth
+                    c_t, deg_t, d_t = last_valid_clean.clone(), last_valid_deg.clone(), last_valid_depth.clone()
                 else:
-                    c_t = process_single_image(self.clean_img_paths[indices[0]], target_size=518, mode="crop")
+                    c_t, deg_t = process_clean_deg_tensors_from_image(
+                        self.clean_img_paths[indices[0]], 
+                        kernel=self.kernel, 
+                        target_size=518, 
+                        mode="crop"
+                    )
                     d_t = process_single_depth_npy(self.gt_depth_paths[indices[0]], target_size=518, mode="crop")
+                    
+                    last_valid_clean, last_valid_deg, last_valid_depth = c_t, deg_t, d_t
 
-            deg_t = process_degraded_from_tensor(c_t, self.kernel)
             clean_list.append(c_t)
-            depth_list.append(d_t)
             deg_list.append(deg_t)
+            depth_list.append(d_t)
 
         return {
             "deg_img": torch.stack(deg_list),
@@ -726,17 +757,22 @@ class ETH3DDataset(Dataset):
 
         deg_list, clean_list, depth_list = [], [], []
         for i in indices:
-            c_t = process_single_image(self.clean_img_paths[i], target_size=518, mode="crop")
+            c_t, deg_t = process_clean_deg_tensors_from_image(
+                self.clean_img_paths[i], 
+                kernel=self.kernel, 
+                target_size=518, 
+                mode="crop"
+            )
+            
             d_t = process_eth3d_depth_bin(self.gt_depth_paths[i], target_size=518, mode="crop")
             
-            invalid_mask = (d_t <= 0) | (d_t > 100.0) | torch.isnan(d_t) | torch.isinf(d_t)
-            d_t[invalid_mask] = 0.0
-            
-            deg_t = process_degraded_from_tensor(c_t, self.kernel)
+            if d_t is not None:
+                invalid_mask = (d_t <= 0) | (d_t > 100.0) | torch.isnan(d_t) | torch.isinf(d_t)
+                d_t[invalid_mask] = 0.0
             
             clean_list.append(c_t)
-            depth_list.append(d_t)
             deg_list.append(deg_t)
+            depth_list.append(d_t)
 
         return {
             "deg_img": torch.stack(deg_list),

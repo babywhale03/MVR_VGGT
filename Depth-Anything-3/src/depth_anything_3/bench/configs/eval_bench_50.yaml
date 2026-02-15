@@ -10,7 +10,8 @@
 # ==============================================================================
 model:
   # Path to model checkpoint or HuggingFace model ID
-  path: facebook/VGGT-1B
+  path: VGGTMVRM__ddp2__val30_seed__g0__kernel100__view4__fp32__ep10__bs-8__lr-2e-04__ema0.9995
+  # path: facebook/VGGT-1B
   # path: depth-anything/DA3-GIANT-1.1
 
 # ==============================================================================

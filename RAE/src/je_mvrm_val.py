@@ -501,7 +501,7 @@ def main():
         optimizer.zero_grad(set_to_none=True)
         
         for step, batch in enumerate(train_loader):
-            print(f"View number in batch: {batch['deg_img'].shape[1]}")
+            # print(f"View number in batch: {batch['deg_img'].shape[1]}")
             clean_img = batch["clean_img"] # [B, V, 3, 392, 518]
             deg_img = batch["deg_img"]     # [B, V, 3, 392, 518]
             gt_depth = batch["gt_depth"]   # [B, V, 1, 392, 518]

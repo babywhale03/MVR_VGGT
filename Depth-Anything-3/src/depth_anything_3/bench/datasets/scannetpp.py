@@ -24,6 +24,7 @@ Evaluation metrics:
 - Camera pose estimation: AUC metrics
 """
 
+import glob
 import os
 from typing import Dict as TDict
 
@@ -163,12 +164,22 @@ class ScanNetPP(Dataset):
         })
 
         for name in names:
-            
-            image = images[name2id[name]]
-            img_path = os.path.join(image_path, name)
+            basename = os.path.splitext(name)[0]
 
-            if not os.path.exists(img_path):
+            search_pattern = os.path.join(image_path, f"{basename}.*")
+            matching_files = glob.glob(search_pattern)
+
+            if not matching_files:
                 continue
+            
+            img_path = matching_files[0]
+            image = images[name2id[name]]
+
+            # image = images[name2id[name]]
+            # img_path = os.path.join(image_path, name)
+
+            # if not os.path.exists(img_path):
+            #     continue
 
             # Build extrinsics (world-to-camera)
             ext = np.eye(4, dtype=np.float32)

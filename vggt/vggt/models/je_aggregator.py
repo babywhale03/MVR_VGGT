@@ -193,7 +193,6 @@ class Aggregator(nn.Module):
                 The list of outputs from the attention blocks,
                 and the patch_start_idx indicating where patch tokens begin.
         """
-        # breakpoint()
         # images: [8, 1, 3, 392, 518]
         B, S, C_in, H, W = images.shape
 

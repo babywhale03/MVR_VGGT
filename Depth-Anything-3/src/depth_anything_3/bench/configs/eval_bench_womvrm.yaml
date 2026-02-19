@@ -6,7 +6,7 @@
 # See depth_anything_3.cfg for config utility functions.
 
 stage_2:
-  model: VGGTMVRM
+  model: VGGT
   target: RAE.src.stage2.models.DDTMVRM_pos_multi.DiTwDDTHead
   params:
     input_size: 16
@@ -25,7 +25,7 @@ stage_2:
     wo_shift: false
     use_pos_embed: false
   extract_layer: 3
-  ckpt: /mnt/dataset1/jaeeun/MVR_vggt/RAE/ckpts/train_hypersim_tartanair_nearcam__val_eth3d__nearrandom/VGGTMVRM__ddp2__val30_seed__g3__kernel100__view4__fp32__ep10__bs-8__lr-2e-04__ema0.9995/checkpoints/step-0021000.pt
+  ckpt:
 
 transport:
   params:
@@ -78,8 +78,8 @@ eval:
   # Datasets to evaluate
   # Options: dtu, dtu64, eth3d, 7scenes (sevenscenes), scannetpp, hiroom
   datasets:
-    - eth3d
-    - 7scenes
+    # - eth3d
+    # - 7scenes
     - scannetpp
     - hiroom
     - dtu

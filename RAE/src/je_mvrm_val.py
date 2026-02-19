@@ -408,7 +408,7 @@ def main():
         time_dist_shift = math.sqrt(shift_dim / shift_base)
         
     # breakpoint()
-    n = micro_batch_size
+    n = micro_batch_size 
     #### Transport init
     transport = create_transport(
         **transport_params,

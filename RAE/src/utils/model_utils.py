@@ -1,9 +1,5 @@
 import importlib
 from dataclasses import dataclass
-from typing import Union, Tuple, Optional
-from stage1 import RAE
-import torch.nn as nn
-from omegaconf import OmegaConf
 import torch
 
 def get_obj_from_str(string, reload=False):
@@ -19,7 +15,7 @@ def instantiate_from_config(config) -> object:
     model = get_obj_from_str(config["target"])(**config.get("params", dict()))
     ckpt_path = config.get("ckpt", None)
     if ckpt_path is not None:
-        state_dict = torch.load(ckpt_path, map_location="cpu")
+        state_dict = torch.load(ckpt_path, map_location="cpu", mmap=True, weights_only=True)
         # see if it's a ckpt from training by checking for "model"
         if "ema" in state_dict:
             state_dict = state_dict["ema"]

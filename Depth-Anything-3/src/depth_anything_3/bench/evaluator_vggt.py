@@ -28,6 +28,7 @@ import os
 import random
 from typing import Dict as TDict, Iterable, List
 
+import math
 import numpy as np
 import torch
 from addict import Dict
@@ -38,6 +39,10 @@ from depth_anything_3.utils.parallel_utils import parallel_execution
 from depth_anything_3.bench.registries import MV_REGISTRY
 from depth_anything_3.utils.constants import EVAL_REF_VIEW_STRATEGY
 import depth_anything_3.utils.constants as constants
+
+from RAE.src.stage2.models import Stage2ModelProtocol
+from RAE.src.utils.model_utils import instantiate_from_config
+from RAE.src.stage2.transport import create_transport, Sampler
 
 class Evaluator:
     """
@@ -69,6 +74,7 @@ class Evaluator:
         max_frames: int = 100,
         gpu_id: int = 0,
         total_gpus: int = 1,
+        config=None,
     ):
         """
         Initialize the evaluator.
@@ -87,6 +93,7 @@ class Evaluator:
                         Set to -1 to disable sampling.
             gpu_id: GPU index for multi-GPU (0-indexed)
             total_gpus: Total number of GPUs for task distribution
+            config: Configuration dictionary for model initialization
         """
         self.work_dir = work_dir
         self.datas = list(datas)
@@ -98,6 +105,7 @@ class Evaluator:
         self.max_frames = max_frames
         self.gpu_id = gpu_id
         self.total_gpus = total_gpus
+        self.config = config
 
         # Validate modes
         unknown = self.modes - self.VALID_MODES
@@ -117,6 +125,15 @@ class Evaluator:
         # Initialize metrics printer
         self._printer = MetricsPrinter()
 
+        if config["stage_2"]["model"] == "VGGTMVRM":
+            device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+            self.stage2_model: Stage2ModelProtocol = instantiate_from_config(config["stage_2"]).to(device) 
+            self.stage2_model.eval()
+            self.eval_sampler = self._get_eval_sampler()
+        else:
+            self.stage2_model = None
+            self.eval_sampler = None    
+
     # -------------------- Public APIs -------------------- #
 
     def all(self, api) -> TDict[str, dict]:
@@ -131,6 +148,31 @@ class Evaluator:
         """
         self.infer(api)
         return self.eval()
+    
+    def _get_eval_sampler(self, base_res = 518):
+        vggt_patch_size = self.config["stage_2"]["params"]["vggt_patch_size"]
+        pH, pW = base_res // vggt_patch_size, base_res // vggt_patch_size
+        vec_size = 5 + pH * pW # 5 special tokens + num_patches
+        latent_dim = 1024
+        shift_dim = vec_size * latent_dim
+        shift_base = self.config["misc"]["time_dist_shift_base"]
+        time_dist_shift = math.sqrt(shift_dim / shift_base)
+        
+        transport = create_transport(
+            **self.config["transport"]["params"],
+            time_dist_shift=time_dist_shift,
+        )
+        transport_sampler = Sampler(transport)
+
+        sampler_mode = self.config["sampler"].get("mode", "ODE").upper()
+        if sampler_mode == "ODE":
+            eval_sampler = transport_sampler.sample_ode(**self.config["sampler"]["params"])
+        elif sampler_mode == "SDE":
+            eval_sampler = transport_sampler.sample_sde(**self.config["sampler"]["params"])
+        else:
+            raise NotImplementedError(f"Invalid sampling mode {sampler_mode}.")
+
+        return eval_sampler
 
     def _get_scenes(self, dataset) -> List[str]:
         """Get list of scenes to evaluate, optionally filtered."""
@@ -142,7 +184,7 @@ class Evaluator:
             return scenes
         return all_scenes
 
-    def infer(self, api, model_path: str = None) -> None:
+    def infer(self, api, model_path: str = None, generator = None) -> None:
         """
         Run inference according to requested modes.
 
@@ -187,6 +229,10 @@ class Evaluator:
                     export_dir=export_dir,
                     export_format=export_format,
                     ref_view_strategy=self.ref_view_strategy,
+                    stage2_model=self.stage2_model,
+                    eval_sampler=self.eval_sampler,
+                    generator=generator,
+                    config=self.config,
                 )
                 self._save_gt_meta(export_dir, scene_data)
 
@@ -199,6 +245,10 @@ class Evaluator:
                     export_dir=export_dir,
                     export_format=export_format,
                     ref_view_strategy=self.ref_view_strategy,
+                    stage2_model=self.stage2_model,
+                    eval_sampler=self.eval_sampler,
+                    generator=generator,
+                    config=self.config,
                 )
                 self._save_gt_meta(export_dir, scene_data)
 
@@ -539,12 +589,13 @@ if __name__ == "__main__":
     from depth_anything_3.cfg import load_config
 
     parser = argparse.ArgumentParser(add_help=False)
+    parser.add_argument("--config", type=str, help="Path to config YAML file")
     parser.add_argument("--work_dir", type=str)
     parser.add_argument("--clean_root_path", type=str)
     parser.add_argument("--deg_root_path", type=str)
 
     cli_args, remaining_argv = parser.parse_known_args()
-
+    # breakpoint()
     if cli_args.clean_root_path:
         constants.DA3_CLEAN_ROOT_PATH = cli_args.clean_root_path
 
@@ -656,7 +707,7 @@ Examples:
     print_only = config.eval.print_only
     debug = config.inference.debug
     num_fusion_workers = config.inference.num_fusion_workers
-
+    
     # GPU settings: parse from CLI dotlist args (gpu_id=X total_gpus=Y)
     # These are passed by the main process when spawning workers
     gpu_id = 0
@@ -682,6 +733,7 @@ Examples:
         max_frames=max_frames,
         gpu_id=gpu_id,
         total_gpus=total_gpus,
+        config=config,
     )
 
     if print_only:
@@ -753,19 +805,18 @@ Examples:
             evaluator.print_metrics(metrics)
         else:
             # Single GPU or worker process
-            vggt_path = "/mnt/dataset1/jaeeun/test/vggt"
-            if vggt_path in sys.path:
-                sys.path.remove(vggt_path) 
-            sys.path.insert(0, vggt_path)
-
-            from vggt.models.vggt import VGGT
-            from vggt.utils.api import VGGTInference
+            from vggt.vggt.models.vggt import VGGT
+            from vggt.vggt.utils.api import VGGTInference
 
             device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
             vggt_model = VGGT.from_pretrained(model_path).to(device)
-            api = VGGTInference(vggt_model)
+            api = VGGTInference(model=vggt_model)
+            api.to(device)
             
-            evaluator.infer(api, model_path=model_path)
+            generator = torch.Generator(device=device)
+            generator.manual_seed(42)
+
+            evaluator.infer(api, model_path=model_path, generator=generator)
 
             # Only run eval if single GPU mode (workers don't eval)
             if not is_worker:

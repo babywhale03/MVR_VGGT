@@ -6,7 +6,7 @@
 # See depth_anything_3.cfg for config utility functions.
 
 stage_2:
-  model: VGGT
+  model: VGGTMVRM
   target: RAE.src.stage2.models.DDTMVRM_pos_multi.DiTwDDTHead
   params:
     input_size: 16
@@ -27,7 +27,8 @@ stage_2:
   extract_layer: 0
   # ckpt: /mnt/dataset1/jaeeun/MVR_vggt/RAE/ckpts/train_hypersim_tartanair_nearcam__val_eth3d__nearrandom/VGGTMVRM__ddp2__val30_seed__g3__kernel100__view4__fp32__ep10__bs-8__lr-2e-04__ema0.9995/checkpoints/step-0021000.pt
   # ckpt: /mnt/dataset1/jaeeun/MVR_vggt/RAE/ckpts/train_hypersim_tartanair_nearcam__val_eth3d__nearrandom/VGGTMVRM__ddp2__deg_first__val30_seed__change_learning_rate_schedule__g0__kernel100__view4__fp32__ep10__bs-8__lr-2e-04__ema0.9995/checkpoints/step-0021000.pt
-  ckpt:
+  # ckpt: /mnt/dataset1/jaeeun/MVR_vggt/RAE/ckpts/train_hypersim_tartanair_nearcam__val_eth3d__nearrandom/VGGTMVRM__test__deg_first__val30_seed__ckpt2000__g0__kernel200__view4__fp32__ep10__bs-4__lr-2e-04__ema0.9995/checkpoints/step-0028000.pt
+  ckpt: /media/data1/MV_Restoration/JIHYE2_CKPT/kernel50_14000.pt
 
 transport:
   params:

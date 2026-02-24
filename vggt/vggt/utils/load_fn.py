@@ -137,7 +137,7 @@ def load_and_preprocess_images(image_path_list, mode="crop"):
 
     images = []
     shapes = set()
-    to_tensor = T.functional.ToTensor()
+    to_tensor = T.functional.to_tensor
     target_size = 518
 
     # First process all images and collect their shapes
@@ -463,6 +463,57 @@ def preprocess_image_tensors(image_tensor_list, mode="crop"):
         processed_images = final_images
 
     return torch.stack(processed_images)
+
+def load_clean_deg_images(image_path_list, kernel=None, mode="crop"):
+    if len(image_path_list) == 0:
+        raise ValueError("At least 1 image is required")
+
+    clean_images = []
+    deg_images = []
+    target_size = 518
+
+    for image_path in image_path_list:
+        img = Image.open(image_path)
+        
+        if img.mode == "RGBA":
+            background = Image.new("RGBA", img.size, (255, 255, 255, 255))
+            img = Image.alpha_composite(background, img)
+        img = img.convert("RGB")
+
+        width, height = img.size
+        new_width = target_size
+        new_height = round(height * (new_width / width) / 14) * 14
+
+        img_resized = img.resize((new_width, new_height), Image.Resampling.BICUBIC)
+
+        img_deg = img_resized.copy()
+        if kernel is not None:
+            img_deg = kernel.applyTo(img_deg, keep_image_dim=True)
+
+        def finalize_img(target_img):
+            t = T.functional.to_tensor(target_img)
+            
+            if mode == "crop" and new_height > target_size:
+                start_y = (new_height - target_size) // 2
+                t = t[:, start_y : start_y + target_size, :]
+            
+            if mode == "pad":
+                h_pad = target_size - t.shape[1]
+                w_pad = target_size - t.shape[2]
+                if h_pad > 0 or w_pad > 0:
+                    t = torch.nn.functional.pad(
+                        t, (w_pad//2, w_pad - w_pad//2, h_pad//2, h_pad - h_pad//2), 
+                        mode="constant", value=1.0
+                    )
+            return t
+
+        clean_images.append(finalize_img(img_resized))
+        deg_images.append(finalize_img(img_deg))
+
+    clean_batch = torch.stack(clean_images)
+    deg_batch = torch.stack(deg_images)
+
+    return clean_batch, deg_batch
 
 ### Single Image Processing Functions ###
 def process_single_hdf5(image_path, target_size=518, mode="crop"):

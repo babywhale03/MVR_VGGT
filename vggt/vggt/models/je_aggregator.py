@@ -275,7 +275,7 @@ class Aggregator(nn.Module):
 
         if pos is not None and pos.shape != (B * S, P, 2):
             pos = pos.view(B, S, P, 2).view(B * S, P, 2)
-
+            
         intermediates = []
 
         # by default, self.aa_block_size=1, which processes one block at a time

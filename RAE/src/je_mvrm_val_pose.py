@@ -42,6 +42,7 @@ import torch.nn.functional as F
 from torchvision.utils import make_grid, save_image
 
 from vggt.vggt.models.vggt import VGGT
+from vggt.vggt.evaluation.test_co3d_mvrm import evaluate_co3d
 
 ##### model imports
 # from stage1 import RAE
@@ -357,9 +358,9 @@ def main():
         data_cfg, micro_batch_size, num_workers, rank, world_size, mode='train', max_views=args.max_views, kernel_size=args.kernel_size
     )
 
-    val_loader, val_sampler = load_dataloader(
-        data_cfg, micro_batch_size, num_workers, rank, world_size, mode='val', max_views=args.max_views, kernel_size=args.kernel_size
-    )
+    # val_loader, val_sampler = load_dataloader(
+    #     data_cfg, micro_batch_size, num_workers, rank, world_size, mode='val', max_views=args.max_views, kernel_size=args.kernel_size
+    # )
 
     # loader, sampler = prepare_latent_dataloader(
     #     args.clean_img_path, args.deg_img_path, args.gt_depth_path, micro_batch_size, num_workers, rank, world_size
@@ -652,172 +653,11 @@ def main():
                     )
                 running_loss = 0.0
 
-            if global_step % 500 == 0:
-                logger.info(f"At step {global_step}, computing train depth metrics...")
-                model.eval()
-                with torch.no_grad():
-                    zs = torch.randn(*deg_latent.shape, generator=generator, device=device, dtype=torch.float32)
-                    xt = zs + deg_latent
-                    sample_model_kwargs["img"] = deg_img.to(device)
-
-                    with autocast(**autocast_kwargs):
-                        restored_latent = eval_sampler(xt, ema_model_fn, **sample_model_kwargs)[-1].float()
-                    
-                    vggt_result = {'restored_latent': restored_latent}
-                    restored_predictions = vggt_model(deg_img.to(device), extract_layer_num=extract_layer, 
-                                                    vggt_result=vggt_result, change_latent=True)
-                    restored_depths = restored_predictions['depth']
-                    
-                    for b in range(restored_depths.shape[0]):
-                        row_elements = [
-                            to_rgb_tensor(clean_img[b]),                        # [V, 3, H, W]
-                            to_rgb_tensor(deg_img[b]),                          # [V, 3, H, W]
-                            to_rgb_tensor(gt_depth[b], is_depth=True),          # [V, 1, H, W]
-                            to_rgb_tensor(train_depths[b], is_depth=True),       # [V, 1, H, W]
-                            to_rgb_tensor(restored_depths[b], is_depth=True),    # [V, 1, H, W]
-                        ]
-
-                        combined_rows = []
-                        for v_idx in range(deg_img.shape[1]): 
-                            for element in row_elements:
-                                combined_rows.append(element[v_idx:v_idx+1]) 
-                        
-                        all_vis_tensors = torch.cat(combined_rows, dim=0)
-                        
-                        grid = make_grid(all_vis_tensors, nrow=5, padding=10, pad_value=1.0) 
-                        
-                        vis_dir = f"{experiment_dir}/visualizations/train_depth"
-                        os.makedirs(vis_dir, exist_ok=True)
-                        save_path = f"{vis_dir}/train_step{global_step:07d}_s{step}_b{b}.png"
-                        save_image(grid, save_path, normalize=False)
-
-                    train_m_accum = defaultdict(float)
-                    count_valid = 0
-                    for b in range(restored_depths.shape[0]):
-                        gt_depth_sample = gt_depth[b, 0, 0]
-                        restored_depths_sample = restored_depths[b, 0].squeeze(-1)
-                        # print(f"gt_depth: {gt_depth_sample.shape}, restored_depths: {restored_depths_sample.shape}")
-                        train_m = compute_depth_metrics(gt_depth_sample, restored_depths_sample)
-                        print(f"Train restored depth metrics for sample {b} at step {global_step}: {train_m}")
-                        if train_m:
-                            for k, v in train_m.items():
-                                train_m_accum[k] += v
-                            count_valid += 1
-                        else:
-                            print(f"Warning: Sample {b} at step {global_step} returned None metrics.")
-
-                    if count_valid > 0:
-                        for k in train_m_accum.keys():
-                            train_m_accum[k] /= count_valid
-                        print(f"Train restored depth metrics at step {global_step} (Avg over {count_valid} samples): {dict(train_m_accum)}")
-                    else:
-                        print(f"Notice: No valid samples in this batch at step {global_step}")
-
-                    print(f"Train restored depth metrics at step {global_step}: {train_m_accum}")
-                    if args.wandb:
-                        wandb_train_stats = {f"train/restored_depth_{k}": v for k, v in train_m_accum.items()}
-                        wandb_utils.log(wandb_train_stats, step=global_step)
-                model.train()
-
             if global_step % sample_every == 0 and rank == 0:
                 logger.info("Starting Sampling...")
-                
-                logger.info(f"Sampling {len(val_loader.dataset)} validation samples...")
-                model.eval()
+                co3d_args = data_cfg["val"]["library"]["co3d"]
+                evaluate_co3d(model, eval_sampler, log_dir=experiment_dir, co3d_dir=co3d_args["clean_img_path"], co3d_anno_dir=co3d_args["annotation_path"])
 
-                val_metrics = defaultdict(float)
-                val_count = 0
-
-                for val_step, val_batch in enumerate(tqdm(val_loader, desc="Validation")):
-                    val_clean_img = val_batch["clean_img"] # [B, V, 3, 392, 518]
-                    val_deg_img = val_batch["deg_img"]     # [B, V, 3, 392, 518]
-                    val_gt_depth = val_batch["gt_depth"]   # [B, V, 1, 392, 518]
-                    batch_size = val_clean_img.shape[0]
-                    print(f"[Step {val_step} Val deg img sum: {val_deg_img.sum().item()}")
-
-                    with torch.no_grad():
-                        with torch.cuda.amp.autocast(dtype=dtype):
-                            val_lq_predictions = vggt_model(val_deg_img.to(device), extract_layer_num=extract_layer) # [B, 1, 1041, 2048]
-                            val_lq_deg_latent = val_lq_predictions["extracted_latent"][:, :, :, 1024:] # [B, 1, 1041, 1024]
-                            val_lq_depths = val_lq_predictions['depth'] # [B, 1, 392, 518, 1]
-                            print(f"Shape of val_lq_deg_latent: {val_lq_deg_latent.shape}")
-                            # if len(val_lq_deg_latent.shape) == 4:
-                            #     val_lq_deg_latent = val_lq_deg_latent.squeeze(1) # [B, 1041, 1024]
-                            generator.manual_seed(global_seed + val_step)
-                            zs = torch.randn(*val_lq_deg_latent.shape, generator=generator, device=device, dtype=torch.float32) # [B, 1041, 1024]
-                            val_xt = zs + val_lq_deg_latent # [B, 1041, 1024] 
-                            # breakpoint()
-                            sample_model_kwargs["img"] = val_deg_img.to(device)
-
-                        with autocast(**autocast_kwargs):
-                            restored_latent = eval_sampler(val_xt, ema_model_fn, **sample_model_kwargs)[-1].float()
-
-                        vggt_result = {}
-                        vggt_result['restored_latent'] = restored_latent # [B, 1041, 1024]
-                        
-                        val_predictions = vggt_model(val_deg_img.to(device), extract_layer_num=extract_layer, vggt_result=vggt_result, change_latent=True)
-                        val_depths = val_predictions['depth'] # [B, 1, 392, 518, 1]
-
-                        for b in range(val_depths.shape[0]):
-                            for view in range(val_depths.shape[1]): 
-                                val_gt_depth_sample = val_gt_depth[b, view, 0]
-                                val_restored_depth_sample = val_depths[b, view].squeeze(-1)
-                                
-                                val_m = compute_depth_metrics(val_gt_depth_sample, val_restored_depth_sample)
-                                
-                                if val_m is not None:
-                                    for k, v in val_m.items():
-                                        val_metrics[k] += v
-                                    val_count += 1
-
-                        if val_step < 5:
-                            idx = 0 
-                            B, V, C, H, W = val_clean_img.shape
-                            breakpoint()
-                            v_clean = val_clean_img[idx]           # [V, 3, H, W]
-                            v_deg = val_deg_img[idx]               # [V, 3, H, W]
-                            v_gt_depth = val_gt_depth[idx]         # [V, 1, H, W]
-                            
-                            v_lq_depth = val_lq_depths[idx].squeeze(-1)    # [V, 1, H, W]
-                            v_restored_depth = val_depths[idx].squeeze(-1) # [V, 1, H, W]
-
-                            v_input_error_vis = process_depth_error_batch(v_gt_depth, v_lq_depth.unsqueeze(-1)) 
-                            v_output_error_vis = process_depth_error_batch(v_gt_depth, v_restored_depth.unsqueeze(-1))
-
-                            row_elements = [
-                                to_rgb_tensor(v_clean),                       # 1. GT RGB
-                                to_rgb_tensor(v_deg),                         # 2. Deg Image
-                                to_rgb_tensor(v_gt_depth, True),              # 3. GT Depth
-                                to_rgb_tensor(v_lq_depth, True),              # 4. Deg Depth
-                                error_to_tensor(v_input_error_vis),           # 5. Input Error
-                                to_rgb_tensor(v_restored_depth, True),        # 6. Restored Depth
-                                error_to_tensor(v_output_error_vis)           # 7. Output Error
-                            ]
-
-                            combined_rows = []
-                            for i in range(V):
-                                for element in row_elements:
-                                    combined_rows.append(element[i:i+1]) 
-                            
-                            all_vis_tensors = torch.cat(combined_rows, dim=0)
-
-                            grid = make_grid(all_vis_tensors, nrow=7, padding=10, pad_value=1.0) 
-
-                            vis_dir = f"{experiment_dir}/visualizations/val_depth"
-                            os.makedirs(vis_dir, exist_ok=True)
-                            save_path = f"{vis_dir}/val_multiview_{val_step}_step{global_step:07d}.png"
-                            save_image(grid, save_path, normalize=False)
-
-                        logger.info("Sampling done.")
-
-                if rank == 0:
-                    avg_val_metrics = {k: v / val_count for k, v in val_metrics.items()} if val_count > 0 else {}
-                    
-                    if args.wandb:
-                        wandb_val_stats = {f"val/depth_{k}": v for k, v in avg_val_metrics.items()}
-                        wandb_utils.log(wandb_val_stats, step=global_step)
-                
-                logger.info(f"Step {global_step} | Val AbsRel: {avg_val_metrics.get('abs_rel', 0):.4f}")
                 logger.info("Resuming training...")
                 model.train()
 

@@ -126,14 +126,13 @@ class VGGTInference(nn.Module):
 
                 with autocast(**autocast_kwargs):
                     restored_latent = eval_sampler(val_xt, stage2_model.forward, **sample_model_kwargs)[-1].float()
+                    restored_latent[:, :, :5, :] = val_lq_deg_latent[:, :, :5, :].float()
 
                 vggt_result = {}
                 vggt_result['restored_latent'] = restored_latent     
 
                 raw_output = self._run_model_forward(imgs, extract_layer_num=config["stage_2"]["extract_layer"], vggt_result=vggt_result, change_latent=True)
-                breakpoint()
         else:
-            breakpoint()
             print("Using VGGT inference...")
             raw_output = self._run_model_forward(imgs)
 
@@ -200,39 +199,6 @@ class VGGTInference(nn.Module):
             self._export_results(prediction, export_format, export_dir, **export_kwargs)
 
         return prediction
-
-    # def _get_dynamic_sampler(self, H, W, config):
-    #     cache_key = (H, W)
-
-    #     if hasattr(self, 'sampler_cache') and cache_key in self.sampler_cache:
-    #         return self.sampler_cache[cache_key]
-    #     vggt_patch_size = config["stage_2"]["params"]["vggt_patch_size"]
-    #     pH, pW = H // vggt_patch_size, W // vggt_patch_size
-    #     vec_size = 5 + pH * pW 
-    #     latent_size = [vec_size, 1024]
-    #     shift_dim = latent_size[0] * latent_size[1]
-    #     shift_base = config["misc"]["time_dist_shift_base"]
-    #     time_dist_shift = math.sqrt(shift_dim / shift_base)
-
-    #     transport = create_transport(
-    #         **config["transport"]["params"],
-    #         time_dist_shift=time_dist_shift,
-    #     )
-    #     transport_sampler = Sampler(transport)
-
-    #     sampler_mode = config["sampler"].get("mode", "ODE").upper()
-    #     if sampler_mode == "ODE":
-    #         eval_sampler = transport_sampler.sample_ode(**config["sampler"]["params"])
-    #     elif sampler_mode == "SDE":
-    #         eval_sampler = transport_sampler.sample_sde(**config["sampler"]["params"])
-    #     else:
-    #         raise NotImplementedError(f"Invalid sampling mode {sampler_mode}.")
-        
-    #     if not hasattr(self, 'sampler_cache'):
-    #         self.sampler_cache = {}
-    #     self.sampler_cache[cache_key] = eval_sampler
-
-    #     return eval_sampler
 
     def _preprocess_inputs(
         self,

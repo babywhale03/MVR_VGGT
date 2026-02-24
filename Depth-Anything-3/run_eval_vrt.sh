@@ -2,9 +2,9 @@
 export PYTHONPATH=$PWD
 export PATH="$CONDA_PREFIX/bin:$PATH"
 export PYTHONBREAKPOINT=0
-DEVICE=3
+DEVICE=4
 # DATASETS=("cam_blur_50" "cam_blur_100" "cam_blur_300" "cam_blur_500")
-DATASETS=("filtered_cam_blur_50" "filtered_cam_blur_100")
+DATASETS=("filtered_cam_blur_300")
 EXP_NAME="restored_vrt"
 
 ########################################

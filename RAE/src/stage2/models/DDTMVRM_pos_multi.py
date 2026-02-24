@@ -164,8 +164,7 @@ class LightningDDTBlock(nn.Module):
                 c).chunk(6, dim=-1)
         attn_output, attn_map = self.attn(DDTModulate(self.norm1(x), shift_msa, scale_msa), pos=pos, return_attn=False)
         x = x + DDTGate(attn_output, gate_msa)
-        x = x + DDTGate(self.mlp(DDTModulate(self.norm2(x),
-                        shift_mlp, scale_mlp)), gate_mlp)
+        x = x + DDTGate(self.mlp(DDTModulate(self.norm2(x), shift_mlp, scale_mlp)), gate_mlp)
         return x, attn_map
 
 
@@ -403,14 +402,14 @@ class DiTwDDTHead(nn.Module):
         if self.rope is not None:
             pos = self.position_getter(B * S, pH, pW, device=x.device)
         
-            if self.patch_start_idx > 0:
-                # do not use position embedding for special tokens (camera and register tokens)
-                # so set pos to 0 for the special tokens
-                pos = pos + 1
-                pos_special = torch.zeros(B * S, self.patch_start_idx, 2, device=x.device, dtype=pos.dtype)
-                pos = torch.cat([pos_special, pos], dim=1) # [B * S, 1041, 2]
+        if self.patch_start_idx > 0:
+            # do not use position embedding for special tokens (camera and register tokens)
+            # so set pos to 0 for the special tokens
+            pos = pos + 1
+            pos_special = torch.zeros(B * S, self.patch_start_idx, 2, device=x.device, dtype=pos.dtype)
+            pos = torch.cat([pos_special, pos], dim=1) # [B * S, 1041, 2]
 
-            pos = pos.view(B, S, P, 2) # [B, S, 1041, 2]
+        pos = pos.view(B, S, P, 2) # [B, S, 1041, 2]
 
         # encoder
         if s is None:

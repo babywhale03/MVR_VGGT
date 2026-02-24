@@ -78,12 +78,12 @@ eval:
   # Datasets to evaluate
   # Options: dtu, dtu64, eth3d, 7scenes (sevenscenes), scannetpp, hiroom
   datasets:
-    # - eth3d
-    # - 7scenes
+    - eth3d
+    - 7scenes
     - scannetpp
-    - hiroom
-    - dtu
-    - dtu64
+    # - hiroom
+    # - dtu
+    # - dtu64
 
   # Evaluation modes
   # Options: pose, recon_unposed, recon_posed, view_syn

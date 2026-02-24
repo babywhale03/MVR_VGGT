@@ -161,6 +161,7 @@ class SevenScenes(Dataset):
         for i in range(0, n_imgs, 1):
             
             # pho check ext
+            breakpoint()
             ext = glob.glob(os.path.join(deg_folder, '*color*'))[0]
             _, ext = os.path.splitext(ext)            
             img_path = os.path.join(deg_folder, f"frame-{i:06d}.color{ext}")

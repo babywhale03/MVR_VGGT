@@ -233,7 +233,7 @@ class ETH3D(Dataset):
                 continue
 
             # image_path = os.path.join(scene_dir, "images", image_name)
-            
+            breakpoint()
             # pho - check ext
             if DA3_CLEAN_ROOT_PATH == DA3_DEG_ROOT_PATH:
                 ext = glob.glob(os.path.join(self.da3_deg_root_path, 'eth3d', scene, "images", "dslr_images", "*.JPG"))[0]

@@ -528,29 +528,9 @@ def main():
                     clean_img_latent = clean_predictions["extracted_latent"] # [B, 1, 1041, 2048]
                     clean_latent_depths = clean_predictions['depth'] # [B, 1, 392, 518, 1]
 
-                    # frame + global latent 
-                    # imagenet normalization to deg_img
-                    predictions = vggt_model(deg_img.to(device), extract_layer_num=extract_layer) # [B, 1, 1041, 2048]
-                    train_depths = predictions['depth'] # [B, 1, 392, 518, 1]
-                    deg_latent = predictions["extracted_latent"] # [B, 1, 1041, 2048]
-                assert clean_img_latent.shape == deg_latent.shape, f"Latent shape mismatch: {clean_img_latent.shape} vs {deg_latent.shape}" # [B, 1, 1041, 2048]
-
-                # only use global latent, remove special tokens
-                # clean_img_latent = clean_img_latent[:, :, 5:, :] # [B, 1, 1036, 2048]
-                # deg_latent = deg_latent[:, :, 5:, 1024:] # [B, 1, 1036, 1024]
-                # clean_img_latent = rearrange(clean_img_latent, 'b s (pH pW) d -> (b s) d pH pW', pH=pH, pW=pW) # [B, 2048, 28, 37]
-                # deg_latent_patch = rearrange(deg_latent, 'b s (pH pW) d -> (b s) d pH pW', pH=pH, pW=pW) # [B, 1024, 28, 37]
                 clean_img_latent = clean_img_latent[:, :, :, 1024:] # [B, 1, 1041, 2048]
-                deg_latent = deg_latent[:, :, :, 1024:] # [B, 1, 1041, 1024]
 
-                if step == 0:
-                    gt_depth_sample = gt_depth[0, 0, 0]
-                    deg_depth_sample = train_depths[0, 0].squeeze(-1)
-                    deg_depth_metric = compute_depth_metrics(gt_depth_sample, deg_depth_sample)
-                    print(f"Deg input depth metrics at epoch {epoch}, step {step}: {deg_depth_metric}")
-
-            model_kwargs = {"deg_latent": deg_latent}
-            # model_kwargs = {}
+            model_kwargs = {}
 
             with autocast(**autocast_kwargs):
                 # terms = transport.training_losses(ddp_model, clean_img_latent, model_kwargs)
@@ -584,13 +564,6 @@ def main():
                     if p.grad is not None:
                         total_norm += p.grad.data.norm(2).item() ** 2
                 total_norm = total_norm ** 0.5
-
-            if torch.isnan(loss) or torch.isinf(loss):
-                if rank == 0:
-                    logger.error(f"NaN Loss detected at Step {global_step}!")
-                    logger.info(f"clean_img_latent stats: mean={clean_img_latent.mean():.4f}, max={clean_img_latent.max():.4f}, min={clean_img_latent.min():.4f}")
-                    logger.info(f"deg_latent stats: mean={deg_latent.mean():.4f}, max={deg_latent.max():.4f}")
-                    logger.info(f"Grad Norm: {total_norm:.4f}")
 
             if scaler:
                 scaler.step(optimizer)
@@ -656,15 +629,15 @@ def main():
                 logger.info(f"At step {global_step}, computing train depth metrics...")
                 model.eval()
                 with torch.no_grad():
-                    zs = torch.randn(*deg_latent.shape, generator=generator, device=device, dtype=torch.float32)
-                    xt = zs + deg_latent
-                    sample_model_kwargs["img"] = deg_img.to(device)
+                    zs = torch.randn(*clean_img_latent.shape, generator=generator, device=device, dtype=torch.float32)
+                    xt = zs + clean_img_latent
+                    sample_model_kwargs["img"] = clean_img.to(device)
 
                     with autocast(**autocast_kwargs):
                         restored_latent = eval_sampler(xt, ema_model_fn, **sample_model_kwargs)[-1].float()
                     
                     vggt_result = {'restored_latent': restored_latent}
-                    restored_predictions = vggt_model(deg_img.to(device), extract_layer_num=extract_layer, 
+                    restored_predictions = vggt_model(clean_img.to(device), extract_layer_num=extract_layer, 
                                                     vggt_result=vggt_result, change_latent=True)
                     restored_depths = restored_predictions['depth']
                     
@@ -673,7 +646,7 @@ def main():
                             to_rgb_tensor(clean_img[b]),                        # [V, 3, H, W]
                             to_rgb_tensor(deg_img[b]),                          # [V, 3, H, W]
                             to_rgb_tensor(gt_depth[b], is_depth=True),          # [V, 1, H, W]
-                            to_rgb_tensor(train_depths[b], is_depth=True),       # [V, 1, H, W]
+                            to_rgb_tensor(clean_latent_depths[b], is_depth=True),       # [V, 1, H, W]
                             to_rgb_tensor(restored_depths[b], is_depth=True),    # [V, 1, H, W]
                         ]
 
@@ -737,17 +710,17 @@ def main():
 
                     with torch.no_grad():
                         with torch.cuda.amp.autocast(dtype=dtype):
-                            val_lq_predictions = vggt_model(val_deg_img.to(device), extract_layer_num=extract_layer) # [B, 1, 1041, 2048]
-                            val_lq_deg_latent = val_lq_predictions["extracted_latent"][:, :, :, 1024:] # [B, 1, 1041, 1024]
+                            val_lq_predictions = vggt_model(val_clean_img.to(device), extract_layer_num=extract_layer) # [B, 1, 1041, 2048]
+                            val_lq_clean_latent = val_lq_predictions["extracted_latent"][:, :, :, 1024:] # [B, 1, 1041, 1024]
                             val_lq_depths = val_lq_predictions['depth'] # [B, 1, 392, 518, 1]
-                            print(f"Shape of val_lq_deg_latent: {val_lq_deg_latent.shape}")
-                            # if len(val_lq_deg_latent.shape) == 4:
-                            #     val_lq_deg_latent = val_lq_deg_latent.squeeze(1) # [B, 1041, 1024]
+                            print(f"Shape of val_lq_clean_latent: {val_lq_clean_latent.shape}")
+                            # if len(val_lq_clean_latent.shape) == 4:
+                            #     val_lq_clean_latent = val_lq_clean_latent.squeeze(1) # [B, 1041, 1024]
                             generator.manual_seed(global_seed + val_step)
-                            zs = torch.randn(*val_lq_deg_latent.shape, generator=generator, device=device, dtype=torch.float32) # [B, 1041, 1024]
-                            val_xt = zs + val_lq_deg_latent # [B, 1041, 1024] 
+                            zs = torch.randn(*val_lq_clean_latent.shape, generator=generator, device=device, dtype=torch.float32) # [B, 1041, 1024]
+                            val_xt = zs + val_lq_clean_latent # [B, 1041, 1024] 
                             # breakpoint()
-                            sample_model_kwargs["img"] = val_deg_img.to(device)
+                            sample_model_kwargs["img"] = val_clean_img.to(device)
 
                         with autocast(**autocast_kwargs):
                             restored_latent = eval_sampler(val_xt, ema_model_fn, **sample_model_kwargs)[-1].float()
@@ -755,7 +728,7 @@ def main():
                         vggt_result = {}
                         vggt_result['restored_latent'] = restored_latent # [B, 1041, 1024]
                         
-                        val_predictions = vggt_model(val_deg_img.to(device), extract_layer_num=extract_layer, vggt_result=vggt_result, change_latent=True)
+                        val_predictions = vggt_model(val_clean_img.to(device), extract_layer_num=extract_layer, vggt_result=vggt_result, change_latent=True)
                         val_depths = val_predictions['depth'] # [B, 1, 392, 518, 1]
 
                         for b in range(val_depths.shape[0]):

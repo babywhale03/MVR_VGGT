@@ -83,13 +83,14 @@ class CameraHead(nn.Module):
             list: A list of predicted camera encodings (post-activation) from each iteration.
         """
         # Use tokens from the last block for camera prediction.
+        breakpoint()
         tokens = aggregated_tokens_list[-1]
 
         # Extract the camera tokens
-        pose_tokens = tokens[:, :, 0]
+        pose_tokens = tokens[:, :, 0] # [4, 3, 2048]
         pose_tokens = self.token_norm(pose_tokens)
 
-        pred_pose_enc_list = self.trunk_fn(pose_tokens, num_iterations)
+        pred_pose_enc_list = self.trunk_fn(pose_tokens, num_iterations) # len 4: [4, 3, 9]
         return pred_pose_enc_list
 
     def trunk_fn(self, pose_tokens: torch.Tensor, num_iterations: int) -> list:

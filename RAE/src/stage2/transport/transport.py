@@ -313,6 +313,70 @@ class Transport:
                 
         return terms
     
+    def training_losses_sequence_with_pose(
+        self, 
+        model,
+        camera_head,
+        clean_img,  
+        x1, 
+        step,
+        experiment_dir,
+        model_kwargs=None
+    ):
+        """Loss for training the score model
+        Args:
+        - model: backbone model; could be score, noise, or velocity
+        - x1: datapoint (clean latent)
+        - model_kwargs: additional arguments for the model
+        """
+        # x1 (clean_img_latent): [B, S, 1041, 1024]
+        # deg_latent: [B, S, 1041, 1024]
+        if model_kwargs == None:
+            model_kwargs = {}
+        
+        # if len(x1.shape) == 4:
+        #     x1 = x1.squeeze(1)  # [B, 1041, 1024]
+        if "deg_latent" in model_kwargs:
+            deg_latent = model_kwargs.pop("deg_latent") # [B, S, 1041, 1024]
+            # deg_latent = deg_latent.squeeze(1) # [B, 1041, 1024]
+            t, x0, x1 = self.sample(x1) # t: [B,], x0: [B, S, 1041, 1024], x1: [B, S, 1041, 1024]
+            t, xt, ut = self.path_sampler.plan(t, x0, x1)
+            xt = xt + deg_latent # [B, S, 1041, 1024]
+            model_output = model(clean_img, xt, t, step=step, experiment_dir=experiment_dir, **model_kwargs) # [B, S, 1041, 1024]
+        else:
+            t, x0, x1 = self.sample(x1) # t: [B,], x0: [B, S, 1041, 1024], x1: [B, S, 1041, 1024]
+            t, xt, ut = self.path_sampler.plan(t, x0, x1)
+            xt = xt + x1 # [B, S, 1041, 1024]
+            model_output = model(clean_img, xt, t, experiment_dir=experiment_dir, **model_kwargs)
+
+        # B, *_, C = xt.shape
+        # breakpoint()
+        # assert model_output.size() == (B, *xt.size()[1:-1], C)
+
+        terms = {}
+        terms['pred'] = model_output # [B, 1041, 1024]
+        pred_pose = camera_head([model_output])
+        # breakpoint()
+        if self.model_type == ModelType.VELOCITY:
+            terms['loss'] = mean_flat(((model_output - ut) ** 2)) + mean_flat(((pred_pose - gt_pose) ** 2))
+        else: 
+            _, drift_var = self.path_sampler.compute_drift(xt, t)
+            sigma_t, _ = self.path_sampler.compute_sigma_t(path.expand_t_like_x(t, xt))
+            if self.loss_type in [WeightType.VELOCITY]:
+                weight = (drift_var / sigma_t) ** 2
+            elif self.loss_type in [WeightType.LIKELIHOOD]:
+                weight = drift_var / (sigma_t ** 2)
+            elif self.loss_type in [WeightType.NONE]:
+                weight = 1
+            else:
+                raise NotImplementedError()
+            
+            if self.model_type == ModelType.NOISE:
+                terms['loss'] = mean_flat(weight * ((model_output - x0) ** 2)) + mean_flat(((pose - clean_pose) ** 2))
+            else:
+                terms['loss'] = mean_flat(weight * ((model_output * sigma_t + x0) ** 2)) + mean_flat(((pose - clean_pose) ** 2))
+                
+        return terms
 
     def get_drift(
         self

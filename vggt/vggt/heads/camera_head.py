@@ -83,7 +83,6 @@ class CameraHead(nn.Module):
             list: A list of predicted camera encodings (post-activation) from each iteration.
         """
         # Use tokens from the last block for camera prediction.
-        breakpoint()
         tokens = aggregated_tokens_list[-1]
 
         # Extract the camera tokens

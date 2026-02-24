@@ -2,15 +2,16 @@ stage_2:
   model: VGGTMVRM
   target: stage2.models.DDTMVRM_pos_multi.DiTwDDTHead
   save_folder: train_hypersim_tartanair_nearcam__val_eth3d__nearrandom
-  exp_name: clean_recon__ckpt9000
+  exp_name: test_gf__deg_first__val30_seed__1152,2880
   params:
     input_size: 16
     patch_size: 1
     vggt_patch_size: 14
-    in_channels: 1024
+    in_channels: 2048 # 1024
     # hidden_size: [1536, 2880]
     # hidden_size: [1280, 2880]
-    hidden_size: [1152, 2048]
+    # hidden_size: [1152, 2048]
+    hidden_size: [1152, 2880]
     depth: [28, 2]
     num_heads: [16, 16]
     mlp_ratio: 4.0
@@ -19,7 +20,8 @@ stage_2:
     use_rmsnorm: true
     wo_shift: false
     use_pos_embed: false
-  ckpt: /mnt/dataset1/jaeeun/MVR_vggt/RAE/ckpts/train_hypersim_tartanair_nearcam__val_eth3d__nearrandom/VGGTMVRM__clean_recon__g0__kernel100__view4__fp32__ep10__bs-4__lr-2e-04__ema0.9995/checkpoints/step-0009000.pt
+  ckpt:
+  # ckpt: /mnt/dataset1/jaeeun/MVR_vggt/RAE/ckpts/train_hypersim_tartanair_nearcam__val_eth3d__nearrandom/VGGTMVRM__clean_recon__g0__kernel100__view4__fp32__ep10__bs-4__lr-2e-04__ema0.9995/checkpoints/step-0009000.pt
 
 transport:
   params:

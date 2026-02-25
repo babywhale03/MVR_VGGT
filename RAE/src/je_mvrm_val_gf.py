@@ -42,6 +42,7 @@ import torch.nn.functional as F
 from torchvision.utils import make_grid, save_image
 
 from vggt.vggt.models.vggt import VGGT
+from vggt.vggt.evaluation.test_co3d_mvrm import evaluate_co3d
 
 ##### model imports
 # from stage1 import RAE
@@ -51,12 +52,13 @@ from stage2.transport import create_transport, Sampler
 ##### general utils
 from utils import wandb_utils
 from utils.model_utils import instantiate_from_config
-from utils.train_utils import *
+from utils.train_utils_gf import *
 from utils.optim_utils import build_optimizer, build_scheduler
 from utils.resume_utils import *
 from utils.wandb_utils import *
 from utils.dist_utils import *
 from utils.depth_utils import *
+from utils.pose_utils import *
 
 ##### Eval utils
 from eval import evaluate_generation_distributed
@@ -551,7 +553,7 @@ def main():
 
             if checkpoint_interval > 0 and global_step > 0 and global_step % checkpoint_interval == 0 and rank == 0:
                 logger.info(f"Saving checkpoint at epoch {epoch}...")
-                ckpt_path = f"{checkpoint_dir}/global_step:{global_step:07d}.pt" 
+                ckpt_path = f"{checkpoint_dir}/global_step_{global_step:07d}.pt" 
                 save_checkpoint(
                     ckpt_path,
                     global_step,
@@ -702,6 +704,25 @@ def main():
 
                         if val_step < 5:
                             idx = 0 
+                            
+                            vis_dir = f"{experiment_dir}/visualizations/val_depth"
+                            os.makedirs(vis_dir, exist_ok=True)
+                            save_path = f"{vis_dir}/val_multiview_{val_step}_step{global_step:07d}.png"
+                            save_image(grid, save_path, normalize=False)
+
+                            v_gt_se3 = val_batch["gt_poses"][idx].to(device)
+
+                            v_lq_se3 = enc_to_se3(val_lq_predictions["pose_enc"], val_deg_img.shape[-2:])
+                            v_restored_se3 = enc_to_se3(val_predictions["pose_enc"], val_deg_img.shape[-2:])
+
+                            gt_centers = get_aligned_centers(v_gt_se3)
+                            lq_centers = get_aligned_centers(v_lq_se3)
+                            restored_centers = get_aligned_centers(v_restored_se3)
+
+                            pose_vis_dir = f"{experiment_dir}/visualizations/val_pose"
+                            traj_path = f"{pose_vis_dir}/val_trajectory_{val_step}_step{global_step:07d}.png"
+                            plot_trajectory(gt_centers, restored_centers, lq_centers, save_path=traj_path)
+
                             B, V, C, H, W = val_clean_img.shape
                             breakpoint()
                             v_clean = val_clean_img[idx]           # [V, 3, H, W]
@@ -732,12 +753,6 @@ def main():
                             all_vis_tensors = torch.cat(combined_rows, dim=0)
 
                             grid = make_grid(all_vis_tensors, nrow=7, padding=10, pad_value=1.0) 
-
-                            vis_dir = f"{experiment_dir}/visualizations/val_depth"
-                            os.makedirs(vis_dir, exist_ok=True)
-                            save_path = f"{vis_dir}/val_multiview_{val_step}_step{global_step:07d}.png"
-                            save_image(grid, save_path, normalize=False)
-
                         logger.info("Sampling done.")
 
                 if rank == 0:
@@ -750,6 +765,15 @@ def main():
                 logger.info(f"Step {global_step} | Val AbsRel: {avg_val_metrics.get('abs_rel', 0):.4f}")
                 logger.info("Resuming training...")
                 model.train()
+
+
+            # if global_step % 4000 == 0 and rank == 0:
+            #     logger.info("Starting Sampling...")
+            #     co3d_args = data_cfg["val"]["library"]["co3d"]
+            #     evaluate_co3d(model, eval_sampler, log_dir=experiment_dir, co3d_dir=co3d_args["clean_img_path"], co3d_anno_dir=co3d_args["annotation_path"])
+
+            #     logger.info("Resuming training...")
+            #     model.train()
 
             global_step += 1
             num_batches += 1

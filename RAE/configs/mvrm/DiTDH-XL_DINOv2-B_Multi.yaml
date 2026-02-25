@@ -2,7 +2,7 @@ stage_2:
   model: VGGTMVRM
   target: stage2.models.DDTMVRM_pos_multi.DiTwDDTHead
   save_folder: train_hypersim_tartanair_nearcam__val_eth3d__nearrandom
-  exp_name: test_gf__deg_first__val30_seed__1152,2880
+  exp_name: test_gf__deg_first__val30_seed__1152,2304
   params:
     input_size: 16
     patch_size: 1
@@ -11,7 +11,7 @@ stage_2:
     # hidden_size: [1536, 2880]
     # hidden_size: [1280, 2880]
     # hidden_size: [1152, 2048]
-    hidden_size: [1152, 2880]
+    hidden_size: [1152, 2304]
     depth: [28, 2]
     num_heads: [16, 16]
     mlp_ratio: 4.0
@@ -133,6 +133,11 @@ data:
         view_sel:
           strategy: "near_random" # or "random", "sequential"
           expand_ratio: 2.0
+      
+      co3d:
+        clean_img_path: /mnt/dataset1/MV_Restoration/co3d/co3d_single_seq
+        gt_depth_path: /mnt/dataset1/MV_Restoration/co3d/co3d_single_seq
+        annotation_path: /mnt/dataset1/MV_Restoration/co3d/co3d_annotation
 
       
 # eval:

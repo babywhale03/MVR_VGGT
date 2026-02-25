@@ -1,7 +1,7 @@
 #!/bin/bash
 export PYTHONPATH=$PWD
 export PATH="$CONDA_PREFIX/bin:$PATH"
-export PYTHONBREAKPOINT=0
+# export PYTHONBREAKPOINT=0
 
 DEVICE=0
 DATASETS=("cam_blur_50" "cam_blur_100" "cam_blur_300")

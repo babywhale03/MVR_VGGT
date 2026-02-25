@@ -622,7 +622,7 @@ def main():
 
             if checkpoint_interval > 0 and global_step > 0 and global_step % checkpoint_interval == 0 and rank == 0:
                 logger.info(f"Saving checkpoint at epoch {epoch}...")
-                ckpt_path = f"{checkpoint_dir}/global_step:{global_step:07d}.pt" 
+                ckpt_path = f"{checkpoint_dir}/global_step_{global_step:07d}.pt" 
                 save_checkpoint(
                     ckpt_path,
                     global_step,

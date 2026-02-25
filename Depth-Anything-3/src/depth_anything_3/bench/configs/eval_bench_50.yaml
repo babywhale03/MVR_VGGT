@@ -91,8 +91,8 @@ eval:
   # Evaluation modes
   # Options: pose, recon_unposed, recon_posed, view_syn
   modes:
-    - pose
-    - recon_unposed
+    # - pose
+    # - recon_unposed
     - recon_posed
 
   # Reference view selection strategy for inference
@@ -109,7 +109,7 @@ eval:
   max_frames: 50
 
   # Only run evaluation (skip inference)
-  eval_only: false
+  eval_only: true
 
   # Only print saved metrics (skip inference and evaluation)
   print_only: false

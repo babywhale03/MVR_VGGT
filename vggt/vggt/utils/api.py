@@ -308,6 +308,7 @@ class VGGTInference(nn.Module):
         ransac_view_thresh: int = 10,
     ) -> Prediction:
         """Align depth map to input extrinsics"""
+        breakpoint()
         if extrinsics is None:
             return prediction
         prediction.intrinsics = intrinsics.numpy()

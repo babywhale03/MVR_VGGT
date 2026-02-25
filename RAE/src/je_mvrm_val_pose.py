@@ -12,6 +12,7 @@ import os
 from collections import defaultdict, OrderedDict
 import re
 import torch
+from datetime import datetime
 
 # the first flag below was False when we tested this script but True makes A100 training a lot faster:
 torch.backends.cuda.matmul.allow_tf32 = True
@@ -42,7 +43,7 @@ import torch.nn.functional as F
 from torchvision.utils import make_grid, save_image
 
 from vggt.vggt.models.vggt import VGGT
-from vggt.vggt.evaluation.test_co3d_mvrm import evaluate_co3d
+from vggt.vggt.evaluation.test_co3d_mvrm_gf import evaluate_co3d
 
 ##### model imports
 # from stage1 import RAE
@@ -88,6 +89,21 @@ class MetricLogger:
                 writer.writeheader()
                 self.header_saved = True
             writer.writerow(data)
+
+def setup_logger(output_dir):
+    os.makedirs(output_dir, exist_ok=True)
+    log_filename = datetime.now().strftime("eval_%Y%m%d_%H%M%S.log")
+    log_path = os.path.join(output_dir, log_filename)
+
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(message)s',
+        handlers=[
+            logging.FileHandler(log_path),
+            logging.StreamHandler(sys.stdout)
+        ]
+    )
+    return logging.getLogger()
 
 def save_checkpoint(
     path: str,
@@ -623,7 +639,7 @@ def main():
 
             if checkpoint_interval > 0 and global_step > 0 and global_step % checkpoint_interval == 0 and rank == 0:
                 logger.info(f"Saving checkpoint at epoch {epoch}...")
-                ckpt_path = f"{checkpoint_dir}/global_step:{global_step:07d}.pt" 
+                ckpt_path = f"{checkpoint_dir}/global_step_{global_step:07d}.pt" 
                 save_checkpoint(
                     ckpt_path,
                     global_step,
@@ -656,7 +672,13 @@ def main():
             if global_step % sample_every == 0 and rank == 0:
                 logger.info("Starting Sampling...")
                 co3d_args = data_cfg["val"]["library"]["co3d"]
-                evaluate_co3d(model, eval_sampler, log_dir=experiment_dir, co3d_dir=co3d_args["clean_img_path"], co3d_anno_dir=co3d_args["annotation_path"])
+                save_dir = f"{experiment_dir}/visualization/step_{global_step:07d}"
+                os.makedirs(save_dir, exist_ok=True)
+                
+                log_dir = os.path.join(experiment_dir, "co3d_eval")
+                os.makedirs(log_dir, exist_ok=True)
+                logger = setup_logger(log_dir)
+                evaluate_co3d(model, eval_sampler, logger=logger, co3d_dir=co3d_args["clean_img_path"], co3d_anno_dir=co3d_args["annotation_path"], save_dir=save_dir)
 
                 logger.info("Resuming training...")
                 model.train()

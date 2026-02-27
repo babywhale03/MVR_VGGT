@@ -398,6 +398,7 @@ def main():
             
     log_steps = 0
     running_loss = 0.0
+    camera_head_loss_accum = 0.0
     use_guidance = guidance_scale > 1.0
 
     sample_model_kwargs = dict()
@@ -498,6 +499,7 @@ def main():
                 # terms = transport.training_losses(ddp_model, clean_img_latent, model_kwargs)
                 terms = transport.training_losses_sequence(ddp_model, clean_img, clean_img_latent, step, experiment_dir, model_kwargs)
                 loss = terms["loss"].mean()
+                camera_head_loss = terms["camera_head_loss"].mean()
 
             # if scaler:
             #     scaler.scale(loss / grad_accum_steps).backward()
@@ -547,7 +549,9 @@ def main():
             update_ema(ema_model, ddp_model.module, decay=ema_decay)
 
             running_loss += loss.item()
+            camera_head_loss_accum += camera_head_loss.item() if camera_head_loss is not None else 0.0
             epoch_metrics['loss'] += loss.detach()
+            epoch_metrics['camera_head_loss'] += camera_head_loss.detach() if camera_head_loss is not None else torch.tensor(0.0, device=device)
 
             if checkpoint_interval > 0 and global_step > 0 and global_step % checkpoint_interval == 0 and rank == 0:
                 logger.info(f"Saving checkpoint at epoch {epoch}...")
@@ -564,9 +568,11 @@ def main():
             
             if log_interval > 0 and global_step % log_interval == 0 and rank == 0:
                 avg_loss = running_loss / log_interval # flow loss often has large variance so we record avg loss
+                avg_camera_head_loss = camera_head_loss_accum / log_interval
                 steps = torch.tensor(log_interval, device=device)
                 stats = {
                     "train/loss": avg_loss,
+                    "train/camera_head_loss": avg_camera_head_loss,
                     "train/lr": optimizer.param_groups[0]["lr"],
                     "train/grad_norm": total_norm,
                 }
@@ -580,6 +586,7 @@ def main():
                         step=global_step,
                     )
                 running_loss = 0.0
+                camera_head_loss_accum = 0.0
 
             if global_step % 500 == 0:
                 logger.info(f"At step {global_step}, computing train depth metrics...")

@@ -2,7 +2,7 @@ stage_2:
   model: VGGTMVRM
   target: stage2.models.DDTMVRM_pos_multi.DiTwDDTHead
   save_folder: train_hypersim_tartanair_nearcam__val_eth3d__nearrandom
-  exp_name: nvidia__ddp2__test_gf0__deg_first__val20_seed__1152,2880
+  exp_name: nvidia__ddp2__test_camera_loss_v2_gf0__deg_first__val20_seed__1152,2880
   params:
     input_size: 16
     patch_size: 1

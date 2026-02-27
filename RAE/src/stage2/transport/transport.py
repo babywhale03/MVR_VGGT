@@ -249,7 +249,7 @@ class Transport:
                 terms['loss'] = mean_flat(weight * ((model_output * sigma_t + x0) ** 2))
                 
         return terms
-
+        
     def training_losses_sequence(
         self, 
         model,

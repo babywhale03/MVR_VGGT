@@ -387,9 +387,12 @@ class DiTwDDTHead(nn.Module):
 
         return tokens
 
-    def forward(self, clean_img, x, t, step=None, experiment_dir=None, s=None, mask=None):
+    def forward(self, clean_img, x, t, residual=False, step=None, experiment_dir=None, s=None, mask=None):
         # breakpoint()
         # x: [B, S, 1041, 1024]
+        if residual:
+            residual_x = x
+            
         B, S, P, C = x.shape
         _, _, _, H, W = clean_img.shape
         pH, pW = H // self.vggt_patch_size, W // self.vggt_patch_size
@@ -449,7 +452,10 @@ class DiTwDDTHead(nn.Module):
         # breakpoint()
         x = self.final_layer(x, s)
         x = x.view(B, S, P, -1)
-        return x 
+        
+        if residual:
+            x = x + residual_x
+        return x
 
     def forward_with_cfg(self, x, t, y, cfg_scale, cfg_interval=(0, 1)):
         # breakpoint()

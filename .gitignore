@@ -175,3 +175,4 @@ RAE/wandb
 RAE/ckpts
 DiT4SR/
 wandb/
+eval_results/

@@ -1,11 +1,11 @@
 #!/bin/bash
 export PYTHONPATH=$PWD
 export PATH="$CONDA_PREFIX/bin:$PATH"
-# export PYTHONBREAKPOINT=0
+export PYTHONBREAKPOINT=0
 
-DEVICE=0
+DEVICE=4
 DATASETS=("cam_blur_50" "cam_blur_100" "cam_blur_300")
-EXP_NAME="JIHYE__kernel50__step123025"
+EXP_NAME="JIHYE__kernel100__step123025"
 
 ########################################
 # MAX_FRAMES = 50

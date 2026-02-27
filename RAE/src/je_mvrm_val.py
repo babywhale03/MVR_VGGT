@@ -42,6 +42,8 @@ import torch.nn.functional as F
 from torchvision.utils import make_grid, save_image
 
 from vggt.vggt.models.vggt import VGGT
+from vggt.vggt.heads.camera_head import CameraHead
+from RAE.src.eval.eval_metric import run_evaluation
 
 ##### model imports
 # from stage1 import RAE
@@ -51,7 +53,7 @@ from stage2.transport import create_transport, Sampler
 ##### general utils
 from utils import wandb_utils
 from utils.model_utils import instantiate_from_config
-from utils.train_utils import *
+from utils.train_utils_gf import *
 from utils.optim_utils import build_optimizer, build_scheduler
 from utils.resume_utils import *
 from utils.wandb_utils import *
@@ -216,7 +218,9 @@ def main():
 
     # latent_size = tuple(int(dim) for dim in misc.get("latent_size", (768, 16, 16)))
     # shift_dim = misc.get("time_dist_shift_dim", math.prod(latent_size))
-
+    camera_weight = model_config["camera_weight"]
+    residual = model_config["residual"]
+    pose_guidance = model_config["pose_guidance"]
     grad_accum_steps = int(training_cfg.get("grad_accum_steps", 1))
     if grad_accum_steps < 1:
         raise ValueError("Gradient accumulation steps must be >= 1.")
@@ -243,6 +247,9 @@ def main():
     vggt_model = VGGT.from_pretrained("facebook/VGGT-1B").to(device)
     vggt_model.eval()
     vggt_model.requires_grad_(False)
+
+    if pose_guidance:
+        camera_head = CameraHead(dim_in=2048).to(device)
 
     # prepare clean img data paths
     # search_pattern = os.path.join(args.input_img_path, "ai_*", "images", "scene_cam_*_final_hdf5", "frame.*.color.hdf5")
@@ -436,6 +443,9 @@ def main():
             
     log_steps = 0
     running_loss = 0.0
+    camera_running_loss = 0.0
+    token_running_loss = 0.0
+    pose_running_loss = 0.0
     use_guidance = guidance_scale > 1.0
 
     sample_model_kwargs = dict()
@@ -497,8 +507,6 @@ def main():
         train_sampler.set_epoch(epoch) # shuffle data order
         epoch_metrics = defaultdict(lambda: torch.zeros(1, device=device))
         num_batches = 0
-        accum_counter = 0
-        step_loss_accum = 0.0
         optimizer.zero_grad(set_to_none=True)
         
         for step, batch in enumerate(train_loader):
@@ -527,12 +535,15 @@ def main():
                     clean_predictions = vggt_model(clean_img.to(device), extract_layer_num=extract_layer) # [B, 1, 1041, 2048]
                     clean_img_latent = clean_predictions["extracted_latent"] # [B, 1, 1041, 2048]
                     clean_latent_depths = clean_predictions['depth'] # [B, 1, 392, 518, 1]
+                    clean_poses = clean_predictions['pose_enc'] # [B, S, 9]
 
                     # frame + global latent 
                     # imagenet normalization to deg_img
                     predictions = vggt_model(deg_img.to(device), extract_layer_num=extract_layer) # [B, 1, 1041, 2048]
                     train_depths = predictions['depth'] # [B, 1, 392, 518, 1]
                     deg_latent = predictions["extracted_latent"] # [B, 1, 1041, 2048]
+                    deg_poses = camera_head([deg_latent.to(device)])[-1] # [B, S, 9]
+
                 assert clean_img_latent.shape == deg_latent.shape, f"Latent shape mismatch: {clean_img_latent.shape} vs {deg_latent.shape}" # [B, 1, 1041, 2048]
 
                 # only use global latent, remove special tokens
@@ -554,7 +565,16 @@ def main():
 
             with autocast(**autocast_kwargs):
                 # terms = transport.training_losses(ddp_model, clean_img_latent, model_kwargs)
-                terms = transport.training_losses_sequence(ddp_model, clean_img, clean_img_latent, step, experiment_dir, model_kwargs)
+                if not camera_weight:
+                    terms = transport.training_losses_sequence(ddp_model, clean_img, clean_img_latent, clean_poses, deg_poses, residual, pose_guidance, step, experiment_dir, model_kwargs)
+                else:
+                    terms = transport.training_losses_sequence_weight(ddp_model, clean_img, clean_img_latent, clean_poses, deg_poses, residual, pose_guidance, step, experiment_dir, model_kwargs)
+                    camera_loss = terms["camera_loss"].mean()
+                    token_loss = terms["token_loss"].mean()
+
+                if pose_guidance:
+                    pose_loss = terms["pose_loss"].mean()
+
                 loss = terms["loss"].mean()
 
             # if scaler:
@@ -618,7 +638,17 @@ def main():
             #     update_ema(ema_model, ddp_model.module, decay=ema_decay)
 
             running_loss += loss.item()
+            if camera_weight:
+                camera_running_loss += camera_loss.item()
+                token_running_loss += token_loss.item()
+            if pose_guidance:
+                pose_running_loss += pose_loss.item()
             epoch_metrics['loss'] += loss.detach()
+            if camera_weight:
+                epoch_metrics['camera_loss'] += camera_loss.detach()
+                epoch_metrics['token_loss'] += token_loss.detach()
+            if pose_guidance:
+                epoch_metrics['pose_loss'] += pose_loss.detach()
 
             if checkpoint_interval > 0 and global_step > 0 and global_step % checkpoint_interval == 0 and rank == 0:
                 logger.info(f"Saving checkpoint at epoch {epoch}...")
@@ -635,12 +665,25 @@ def main():
             
             if log_interval > 0 and global_step % log_interval == 0 and rank == 0:
                 avg_loss = running_loss / log_interval # flow loss often has large variance so we record avg loss
+                if camera_weight:
+                    avg_camera_loss = camera_running_loss / log_interval
+                    avg_token_loss = token_running_loss / log_interval
+                if pose_guidance:
+                    avg_pose_loss = pose_running_loss / log_interval
+                
                 steps = torch.tensor(log_interval, device=device)
+
                 stats = {
                     "train/loss": avg_loss,
                     "train/lr": optimizer.param_groups[0]["lr"],
                     "train/grad_norm": total_norm,
                 }
+                if camera_weight:
+                    stats["train/camera_loss"] = avg_camera_loss
+                    stats["train/token_loss"] = avg_token_loss
+                if pose_guidance:
+                    stats["train/pose_loss"] = avg_pose_loss
+
                 logger.info(
                     f"[Epoch {epoch} | Step {global_step}] "
                     + ", ".join(f"{k}: {v:.6f}" for k, v in stats.items())
@@ -651,6 +694,9 @@ def main():
                         step=global_step,
                     )
                 running_loss = 0.0
+                camera_running_loss = 0.0
+                token_running_loss = 0.0
+                pose_running_loss = 0.0
 
             if global_step % 500 == 0:
                 logger.info(f"At step {global_step}, computing train depth metrics...")
@@ -719,116 +765,137 @@ def main():
                         wandb_utils.log(wandb_train_stats, step=global_step)
                 model.train()
 
-            if global_step % sample_every == 0 and rank == 0:
-                logger.info("Starting Sampling...")
+            # if global_step % sample_every == 0 and rank == 0:
+            #     logger.info("Starting Sampling...")
                 
-                logger.info(f"Sampling {len(val_loader.dataset)} validation samples...")
-                model.eval()
+            #     logger.info(f"Sampling {len(val_loader.dataset)} validation samples...")
+            #     model.eval()
 
-                val_metrics = defaultdict(float)
-                val_count = 0
+            #     val_metrics = defaultdict(float)
+            #     val_count = 0
 
-                for val_step, val_batch in enumerate(tqdm(val_loader, desc="Validation")):
-                    val_clean_img = val_batch["clean_img"] # [B, V, 3, 392, 518]
-                    val_deg_img = val_batch["deg_img"]     # [B, V, 3, 392, 518]
-                    val_gt_depth = val_batch["gt_depth"]   # [B, V, 1, 392, 518]
-                    batch_size = val_clean_img.shape[0]
-                    print(f"[Step {val_step} Val deg img sum: {val_deg_img.sum().item()}")
+            #     for val_step, val_batch in enumerate(tqdm(val_loader, desc="Validation")):
+            #         val_clean_img = val_batch["clean_img"] # [B, V, 3, 392, 518]
+            #         val_deg_img = val_batch["deg_img"]     # [B, V, 3, 392, 518]
+            #         val_gt_depth = val_batch["gt_depth"]   # [B, V, 1, 392, 518]
+            #         batch_size = val_clean_img.shape[0]
+            #         print(f"[Step {val_step} Val deg img sum: {val_deg_img.sum().item()}")
 
-                    with torch.no_grad():
-                        with torch.cuda.amp.autocast(dtype=dtype):
-                            val_lq_predictions = vggt_model(val_deg_img.to(device), extract_layer_num=extract_layer) # [B, 1, 1041, 2048]
-                            val_lq_deg_latent = val_lq_predictions["extracted_latent"][:, :, :, 1024:] # [B, 1, 1041, 1024]
-                            val_lq_depths = val_lq_predictions['depth'] # [B, 1, 392, 518, 1]
-                            print(f"Shape of val_lq_deg_latent: {val_lq_deg_latent.shape}")
-                            # if len(val_lq_deg_latent.shape) == 4:
-                            #     val_lq_deg_latent = val_lq_deg_latent.squeeze(1) # [B, 1041, 1024]
-                            generator.manual_seed(global_seed + val_step)
-                            zs = torch.randn(*val_lq_deg_latent.shape, generator=generator, device=device, dtype=torch.float32) # [B, 1041, 1024]
-                            val_xt = zs + val_lq_deg_latent # [B, 1041, 1024] 
-                            # breakpoint()
-                            sample_model_kwargs["img"] = val_deg_img.to(device)
+            #         with torch.no_grad():
+            #             with torch.cuda.amp.autocast(dtype=dtype):
+            #                 val_lq_predictions = vggt_model(val_deg_img.to(device), extract_layer_num=extract_layer) # [B, 1, 1041, 2048]
+            #                 val_lq_deg_latent = val_lq_predictions["extracted_latent"][:, :, :, 1024:] # [B, 1, 1041, 1024]
+            #                 val_lq_depths = val_lq_predictions['depth'] # [B, 1, 392, 518, 1]
+            #                 print(f"Shape of val_lq_deg_latent: {val_lq_deg_latent.shape}")
+            #                 # if len(val_lq_deg_latent.shape) == 4:
+            #                 #     val_lq_deg_latent = val_lq_deg_latent.squeeze(1) # [B, 1041, 1024]
+            #                 generator.manual_seed(global_seed + val_step)
+            #                 zs = torch.randn(*val_lq_deg_latent.shape, generator=generator, device=device, dtype=torch.float32) # [B, 1041, 1024]
+            #                 val_xt = zs + val_lq_deg_latent # [B, 1041, 1024] 
+            #                 # breakpoint()
+            #                 sample_model_kwargs["img"] = val_deg_img.to(device)
 
-                        with autocast(**autocast_kwargs):
-                            restored_latent = eval_sampler(val_xt, ema_model_fn, **sample_model_kwargs)[-1].float()
+            #             with autocast(**autocast_kwargs):
+            #                 restored_latent = eval_sampler(val_xt, ema_model_fn, **sample_model_kwargs)[-1].float()
 
-                        vggt_result = {}
-                        vggt_result['restored_latent'] = restored_latent # [B, 1041, 1024]
+            #             vggt_result = {}
+            #             vggt_result['restored_latent'] = restored_latent # [B, 1041, 1024]
                         
-                        val_predictions = vggt_model(val_deg_img.to(device), extract_layer_num=extract_layer, vggt_result=vggt_result, change_latent=True)
-                        val_depths = val_predictions['depth'] # [B, 1, 392, 518, 1]
+            #             val_predictions = vggt_model(val_deg_img.to(device), extract_layer_num=extract_layer, vggt_result=vggt_result, change_latent=True)
+            #             val_depths = val_predictions['depth'] # [B, 1, 392, 518, 1]
 
-                        for b in range(val_depths.shape[0]):
-                            for view in range(val_depths.shape[1]): 
-                                val_gt_depth_sample = val_gt_depth[b, view, 0]
-                                val_restored_depth_sample = val_depths[b, view].squeeze(-1)
+            #             for b in range(val_depths.shape[0]):
+            #                 for view in range(val_depths.shape[1]): 
+            #                     val_gt_depth_sample = val_gt_depth[b, view, 0]
+            #                     val_restored_depth_sample = val_depths[b, view].squeeze(-1)
                                 
-                                val_m = compute_depth_metrics(val_gt_depth_sample, val_restored_depth_sample)
+            #                     val_m = compute_depth_metrics(val_gt_depth_sample, val_restored_depth_sample)
                                 
-                                if val_m is not None:
-                                    for k, v in val_m.items():
-                                        val_metrics[k] += v
-                                    val_count += 1
+            #                     if val_m is not None:
+            #                         for k, v in val_m.items():
+            #                             val_metrics[k] += v
+            #                         val_count += 1
 
-                        if val_step < 5:
-                            idx = 0 
-                            B, V, C, H, W = val_clean_img.shape
-                            breakpoint()
-                            v_clean = val_clean_img[idx]           # [V, 3, H, W]
-                            v_deg = val_deg_img[idx]               # [V, 3, H, W]
-                            v_gt_depth = val_gt_depth[idx]         # [V, 1, H, W]
+            #             if val_step < 5:
+            #                 idx = 0 
+            #                 B, V, C, H, W = val_clean_img.shape
+            #                 breakpoint()
+            #                 v_clean = val_clean_img[idx]           # [V, 3, H, W]
+            #                 v_deg = val_deg_img[idx]               # [V, 3, H, W]
+            #                 v_gt_depth = val_gt_depth[idx]         # [V, 1, H, W]
                             
-                            v_lq_depth = val_lq_depths[idx].squeeze(-1)    # [V, 1, H, W]
-                            v_restored_depth = val_depths[idx].squeeze(-1) # [V, 1, H, W]
+            #                 v_lq_depth = val_lq_depths[idx].squeeze(-1)    # [V, 1, H, W]
+            #                 v_restored_depth = val_depths[idx].squeeze(-1) # [V, 1, H, W]
 
-                            v_input_error_vis = process_depth_error_batch(v_gt_depth, v_lq_depth.unsqueeze(-1)) 
-                            v_output_error_vis = process_depth_error_batch(v_gt_depth, v_restored_depth.unsqueeze(-1))
+            #                 v_input_error_vis = process_depth_error_batch(v_gt_depth, v_lq_depth.unsqueeze(-1)) 
+            #                 v_output_error_vis = process_depth_error_batch(v_gt_depth, v_restored_depth.unsqueeze(-1))
 
-                            row_elements = [
-                                to_rgb_tensor(v_clean),                       # 1. GT RGB
-                                to_rgb_tensor(v_deg),                         # 2. Deg Image
-                                to_rgb_tensor(v_gt_depth, True),              # 3. GT Depth
-                                to_rgb_tensor(v_lq_depth, True),              # 4. Deg Depth
-                                error_to_tensor(v_input_error_vis),           # 5. Input Error
-                                to_rgb_tensor(v_restored_depth, True),        # 6. Restored Depth
-                                error_to_tensor(v_output_error_vis)           # 7. Output Error
-                            ]
+            #                 row_elements = [
+            #                     to_rgb_tensor(v_clean),                       # 1. GT RGB
+            #                     to_rgb_tensor(v_deg),                         # 2. Deg Image
+            #                     to_rgb_tensor(v_gt_depth, True),              # 3. GT Depth
+            #                     to_rgb_tensor(v_lq_depth, True),              # 4. Deg Depth
+            #                     error_to_tensor(v_input_error_vis),           # 5. Input Error
+            #                     to_rgb_tensor(v_restored_depth, True),        # 6. Restored Depth
+            #                     error_to_tensor(v_output_error_vis)           # 7. Output Error
+            #                 ]
 
-                            combined_rows = []
-                            for i in range(V):
-                                for element in row_elements:
-                                    combined_rows.append(element[i:i+1]) 
+            #                 combined_rows = []
+            #                 for i in range(V):
+            #                     for element in row_elements:
+            #                         combined_rows.append(element[i:i+1]) 
                             
-                            all_vis_tensors = torch.cat(combined_rows, dim=0)
+            #                 all_vis_tensors = torch.cat(combined_rows, dim=0)
 
-                            grid = make_grid(all_vis_tensors, nrow=7, padding=10, pad_value=1.0) 
+            #                 grid = make_grid(all_vis_tensors, nrow=7, padding=10, pad_value=1.0) 
 
-                            vis_dir = f"{experiment_dir}/visualizations/val_depth"
-                            os.makedirs(vis_dir, exist_ok=True)
-                            save_path = f"{vis_dir}/val_multiview_{val_step}_step{global_step:07d}.png"
-                            save_image(grid, save_path, normalize=False)
+            #                 vis_dir = f"{experiment_dir}/visualizations/val_depth"
+            #                 os.makedirs(vis_dir, exist_ok=True)
+            #                 save_path = f"{vis_dir}/val_multiview_{val_step}_step{global_step:07d}.png"
+            #                 save_image(grid, save_path, normalize=False)
 
-                        logger.info("Sampling done.")
+            #             logger.info("Sampling done.")
 
-                if rank == 0:
-                    avg_val_metrics = {k: v / val_count for k, v in val_metrics.items()} if val_count > 0 else {}
+            #     if rank == 0:
+            #         avg_val_metrics = {k: v / val_count for k, v in val_metrics.items()} if val_count > 0 else {}
                     
-                    if args.wandb:
-                        wandb_val_stats = {f"val/depth_{k}": v for k, v in avg_val_metrics.items()}
-                        wandb_utils.log(wandb_val_stats, step=global_step)
+            #         if args.wandb:
+            #             wandb_val_stats = {f"val/depth_{k}": v for k, v in avg_val_metrics.items()}
+            #             wandb_utils.log(wandb_val_stats, step=global_step)
                 
-                logger.info(f"Step {global_step} | Val AbsRel: {avg_val_metrics.get('abs_rel', 0):.4f}")
-                logger.info("Resuming training...")
-                model.train()
+            #     logger.info(f"Step {global_step} | Val AbsRel: {avg_val_metrics.get('abs_rel', 0):.4f}")
+            #     logger.info("Resuming training...")
+            #     model.train()
+            if global_step % sample_every == 0 and rank == 0:
+                run_evaluation(
+                    global_step=global_step,
+                    experiment_dir=experiment_dir,
+                    val_loader=val_loader,
+                    vggt_model=vggt_model,
+                    ema_model=ema_model,
+                    eval_sampler=eval_sampler,
+                    device=device,
+                    logger=logger,
+                    wandb_utils=wandb_utils if args.wandb else None
+                )
 
             global_step += 1
             num_batches += 1
         # breakpoint()
         if rank == 0 and num_batches > 0:
             avg_loss = epoch_metrics['loss'].item() / num_batches 
-            epoch_stats = {
-                "epoch/loss": avg_loss,
-            }
+            if camera_weight:
+                avg_camera_loss = epoch_metrics['camera_loss'].item() / num_batches
+                avg_token_loss = epoch_metrics['token_loss'].item() / num_batches
+                epoch_stats = {
+                    "epoch/loss": avg_loss,
+                    "epoch/camera_loss": avg_camera_loss if camera_weight else 0.0,
+                    "epoch/token_loss": avg_token_loss if camera_weight else 0.0
+                }
+            else:
+                epoch_stats = {
+                    "epoch/loss": avg_loss,
+                }
             logger.info(
                 f"[Epoch {epoch}] "
                 + ", ".join(f"{k}: {v:.4f}" for k, v in epoch_stats.items())

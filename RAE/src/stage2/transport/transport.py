@@ -430,9 +430,11 @@ class Transport:
         if "deg_latent" in model_kwargs:
             deg_latent = model_kwargs.pop("deg_latent") # [B, S, 1041, 1024]
             # deg_latent = deg_latent.squeeze(1) # [B, 1041, 1024]
-            t, x0, x1 = self.sample(x1) # t: [B,], x0: [B, S, 1041, 1024], x1: [B, S, 1041, 1024]
+            x1_patch = x1[:, :, 5:, :]
+            deg_latent_patch = deg_latent[:, :, 5:, :]
+            t, x0, x1 = self.sample(x1_patch) # t: [B,], x0: [B, S, 1041, 1024], x1: [B, S, 1041, 1024]
             t, xt, ut = self.path_sampler.plan(t, x0, x1)
-            xt = xt + deg_latent # [B, S, 1041, 1024]
+            xt = xt + deg_latent_patch # [B, S, 1041, 1024]
             model_output = model(clean_img, xt, t, step=step, experiment_dir=experiment_dir, **model_kwargs) # [B, S, 1041, 1024]
         else:
             t, x0, x1 = self.sample(x1) # t: [B,], x0: [B, S, 1041, 1024], x1: [B, S, 1041, 1024]

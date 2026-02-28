@@ -250,15 +250,23 @@ class Aggregator(nn.Module):
                 else:
                     raise ValueError(f"Unknown attention type: {attn_type}")
             # breakpoint()
+            if change_latent and layer_num == extract_layer_num:
+                tokens = kwargs['vggt_result']['restored_latent'] # [B, 1041, 1024]
+                global_intermediates = [tokens.view(B, S, P, C)]
+
+            if change_latent and kwargs['vggt_result'].get('clean_latent') is not None and layer_num == 12:
+                if tokens.shape != (B, S, P, C):
+                    tokens = tokens.view(B, S, P, C)
+                tokens = torch.cat([tokens[:, :, :5, :], kwargs['vggt_result']['clean_latent'][:, :, 5:, :]], dim=2)
+                global_intermediates = [tokens.view(B, S, P, C)]
+
             for i in range(len(frame_intermediates)):
                 # concat frame and global intermediates, [B x S x P x 2C]
                 # frame_intermediates[i], global_intermediates[i]: [B, S, P, C] = [8, 1, 1041, 1024]
                 concat_inter = torch.cat([frame_intermediates[i], global_intermediates[i]], dim=-1) # [B, S, P, 2C] = [8, 1, 1041, 2048]
                 output_list.append(concat_inter)
 
-            if change_latent and layer_num == extract_layer_num:
-                tokens = kwargs['vggt_result']['restored_latent'] # [B, 1041, 1024]
-                # tokens[:,5:,:] = restored_latent.squeeze(1) 
+
                     
         del concat_inter
         del frame_intermediates

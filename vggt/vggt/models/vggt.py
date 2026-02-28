@@ -65,6 +65,7 @@ class VGGT(nn.Module, PyTorchModelHubMixin):
         predictions = {}
 
         with torch.cuda.amp.autocast(enabled=False):
+            predictions["aggregated_tokens_list"] = aggregated_tokens_list
             predictions["extracted_latent"] = aggregated_tokens_list[extract_layer_num] # [8, 1, 1041, 2048]
 
             if self.camera_head is not None:

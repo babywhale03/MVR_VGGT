@@ -126,7 +126,7 @@ class VGGTInference(nn.Module):
 
                 with autocast(**autocast_kwargs):
                     restored_latent = eval_sampler(val_xt, stage2_model.forward, **sample_model_kwargs)[-1].float()
-                    restored_latent[:, :, :5, :] = val_lq_deg_latent[:, :, :5, :].float()
+                    # restored_latent[:, :, :5, :] = val_lq_deg_latent[:, :, :5, :].float()
 
                 vggt_result = {}
                 vggt_result['restored_latent'] = restored_latent     

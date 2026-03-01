@@ -359,7 +359,9 @@ def main():
     
     if training_cfg.get("scheduler"):
         scheduler, sched_msg = build_scheduler(optimizer, steps_per_epoch, training_cfg) # LambdaLR
-     
+    else:
+        scheduler, sched_msg = None, None
+
     if len(data_cfg["train"]["dataset"]) == 1:
         sample_img = train_loader.dataset[0]["deg_img"].to(device) # [V, 3, H, W]
         vggt_patch_size = model_config["params"].get("vggt_patch_size", 14)

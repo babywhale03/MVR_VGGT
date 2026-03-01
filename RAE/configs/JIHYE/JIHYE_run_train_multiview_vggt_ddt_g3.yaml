@@ -68,16 +68,9 @@ training:
   global_seed: 42
   extract_layer: 3
   optimizer:
-    lr: 2.0e-4
+    lr: 2.0e-5
     betas: [0.9, 0.95]
     weight_decay: 0.0
-  scheduler:
-    type: cosine
-    warmup_epochs: 50 # 40
-    decay_end_epoch: 50
-    base_lr: 2.0e-5 
-    final_lr: 2.0e-5
-    warmup_from_zero: false
 
 data:
   train:

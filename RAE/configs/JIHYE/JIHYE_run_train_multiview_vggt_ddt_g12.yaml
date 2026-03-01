@@ -18,7 +18,8 @@ stage_2:
     use_rmsnorm: true
     wo_shift: false
     use_pos_embed: false
-  ckpt:
+  ckpt: /PATH/TO/PRETRAINED/CKPT.pt
+  # ckpt: /media/data1/MV_Restoration/JIHYE2_CKPT/kernel100_14000.pt
 
 transport:
   params:
@@ -51,7 +52,7 @@ misc:
   
 training:
   # SET TRAINING EPOCHS
-  epochs: 10
+  epochs: 50
   # SET GLOBAL BATCH SIZE
   # global_batch_size: 8
   grad_accum_steps: 1 
@@ -64,18 +65,11 @@ training:
   sample_every: 1000
   clip_grad: 1.0
   global_seed: 42
-  extract_layer: 12
+  extract_layer: 3
   optimizer:
-    lr: 2.0e-4
+    lr: 1.0e-4
     betas: [0.9, 0.95]
     weight_decay: 0.0
-  scheduler:
-    type: cosine
-    warmup_epochs: 5 # 40
-    decay_end_epoch: 10
-    base_lr: 2.0e-4 
-    final_lr: 2.0e-5
-    warmup_from_zero: false
 
 data:
   train:

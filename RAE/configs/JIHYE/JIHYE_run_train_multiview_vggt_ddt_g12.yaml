@@ -65,7 +65,7 @@ training:
   sample_every: 1000
   clip_grad: 1.0
   global_seed: 42
-  extract_layer: 3
+  extract_layer: 12
   optimizer:
     lr: 1.0e-4
     betas: [0.9, 0.95]

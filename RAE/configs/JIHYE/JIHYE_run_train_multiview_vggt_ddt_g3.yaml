@@ -19,7 +19,8 @@ stage_2:
     wo_shift: false
     use_pos_embed: false
   # SET PRETRAINED MODEL CKPT PATH TO RESUME TRAINING
-  ckpt: /media/data1/MV_Restoration/JIHYE2_CKPT/kernel100_14000.pt
+  ckpt: /PATH/TO/PRETRAINED/CKPT.pt
+  # ckpt: /media/data1/MV_Restoration/JIHYE2_CKPT/kernel100_14000.pt
 
 transport:
   params:

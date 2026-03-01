@@ -119,7 +119,7 @@ def load_checkpoint(
     checkpoint = torch.load(path, map_location="cpu")
     model.module.load_state_dict(checkpoint["model"])
     ema_model.load_state_dict(checkpoint["ema"])
-    optimizer.load_state_dict(checkpoint["optimizer"])
+    # optimizer.load_state_dict(checkpoint["optimizer"])
     if scheduler is not None and checkpoint.get("scheduler") is not None:
         scheduler.load_state_dict(checkpoint["scheduler"])
     return checkpoint.get("epoch", 0), checkpoint.get("step", 0)

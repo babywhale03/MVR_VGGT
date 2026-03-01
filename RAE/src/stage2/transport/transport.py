@@ -257,10 +257,10 @@ class Transport:
         x1, 
         clean_poses,
         deg_poses,
-        residual,
-        pose_guidance,
-        step,
-        experiment_dir,
+        residual=False,
+        pose_guidance=False,
+        step=None,
+        experiment_dir=None,
         model_kwargs=None
     ):
         """Loss for training the score model
@@ -289,7 +289,7 @@ class Transport:
             t, x0, x1 = self.sample(x1) # t: [B,], x0: [B, S, 1041, 1024], x1: [B, S, 1041, 1024]
             t, xt, ut = self.path_sampler.plan(t, x0, x1)
             xt = xt + x1 # [B, S, 1041, 1024]
-            model_output = model(clean_img, xt, t, residual=residual, experiment_dir=experiment_dir, **model_kwargs)
+            model_output = model(clean_img, xt, t, residual=residual, step=step, experiment_dir=experiment_dir, **model_kwargs)
 
         # B, *_, C = xt.shape
         # breakpoint()

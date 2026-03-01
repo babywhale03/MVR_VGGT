@@ -1,0 +1,156 @@
+stage_2:
+  target: stage2.models.DDTMVRM_pos_multi.DiTwDDTHead
+  save_folder: JIHYE_train_hypersim_nearcam_tartanair_nearrandom
+  exp_name: JIHYE_VGGTMVRM
+  params:
+    input_size: 16
+    patch_size: 1
+    vggt_patch_size: 14
+    in_channels: 1024
+    # hidden_size: [1536, 2880]
+    # hidden_size: [1280, 2880]
+    hidden_size: [1152, 2048]
+    depth: [28, 2]
+    num_heads: [16, 16]
+    mlp_ratio: 4.0
+    use_qknorm: true
+    use_swiglu: true
+    use_rmsnorm: true
+    wo_shift: false
+    use_pos_embed: false
+  ckpt:
+
+transport:
+  params:
+    path_type: 'Linear'
+    prediction: 'velocity'
+    loss_weight: null
+    time_dist_type: 'logit-normal_0_1'
+
+sampler:
+  mode: ODE
+  params:
+    sampling_method: 'euler'
+    num_steps: 50
+    atol: 1.0e-6
+    rtol: 1.0e-3
+    reverse: false
+
+guidance:
+  method: 'cfg'
+  scale: 1.0
+  t_min: 0.0
+  t_max: 1.0
+
+misc:
+  # latent_size: [1041, 1024]
+  num_classes: 0
+  # time_dist_shift_dim: 1065984 # 1041*1024
+  time_dist_shift_base: 4096
+
+  
+training:
+  # SET TRAINING EPOCHS
+  epochs: 10
+  # SET GLOBAL BATCH SIZE
+  # global_batch_size: 8
+  grad_accum_steps: 1 
+  ema_decay: 0.9995
+  # SET NUMBER OF WORKERS TO GPU_NUM*4
+  num_workers: 8
+  log_interval: 50
+  # SET MODEL WEIGHT SAVING CKPT INTERVAL
+  checkpoint_interval: 2000 # step
+  sample_every: 1000
+  clip_grad: 1.0
+  global_seed: 42
+  extract_layer: 12
+  optimizer:
+    lr: 2.0e-4
+    betas: [0.9, 0.95]
+    weight_decay: 0.0
+  scheduler:
+    type: cosine
+    warmup_epochs: 5 # 40
+    decay_end_epoch: 10
+    base_lr: 2.0e-4 
+    final_lr: 2.0e-5
+    warmup_from_zero: false
+
+data:
+  train:
+    dataset: ['hypersim', 'tartanair']
+    library:
+      hypersim:
+        clean_img_path: /data/MV_Restoration_tmp/hypersim/data/
+        gt_depth_path: 
+        annotation_path: /data/jaeeun/MVR_VGGT/metadata_images_split_scene_v1.csv
+        view_sel:
+          strategy: "near_camera" # or "random", "sequential"
+          expand_ratio: 2.0
+
+      tartanair:
+        clean_img_path: /data/MV_Restoration_tmp/tartanair/data/
+        gt_depth_path: /data/MV_Restoration_tmp/tartanair/data/
+        annotation_path:
+        view_sel:
+          strategy: "near_random" # or "random", "sequential"
+          expand_ratio: 2.0
+      
+      eth3d:
+        clean_img_path: /data/MV_Restoration_tmp/da3_benchmark_dataset_s20/clean/eth3d
+        gt_depth_path: /data/MV_Restoration_tmp/da3_benchmark_dataset_s20/clean/eth3d
+        annotation_path: 
+        view_sel:
+          strategy: "near_random" # or "random", "sequential"
+          expand_ratio: 2.0
+
+  val:
+    dataset: ['eth3d']
+    library:
+      hypersim:
+        clean_img_path: /data/MV_Restoration_tmp/hypersim/data/
+        gt_depth_path:
+        annotation_path: /data/jaeeun/MVR_VGGT/metadata_images_split_scene_v1.csv
+        num_eval_img: 20
+        view_sel:
+          strategy: "near_random" # or "random", "sequential"
+          expand_ratio: 2.0
+
+      tartanair:
+        clean_img_path: /data/MV_Restoration_tmp/tartanair/data/
+        gt_depth_path: /data/MV_Restoration_tmp/tartanair/data/
+        annotation_path:
+        num_eval_img: 20
+        view_sel:
+          strategy: "near_random" # or "random", "sequential"
+          expand_ratio: 2.0
+
+      eth3d:
+        clean_img_path: /data/MV_Restoration_tmp/da3_benchmark_dataset_s20/clean/eth3d
+        gt_depth_path: /data/MV_Restoration_tmp/da3_benchmark_dataset_s20/clean/eth3d
+        annotation_path: 
+        num_eval_img: 20
+        view_sel:
+          strategy: "near_random" # or "random", "sequential"
+          expand_ratio: 2.0
+      
+log:
+  # SET SAVING PATH
+  result_root_dir: RAE/ckpts/JIHYE/
+  tracker:
+    name: wandb
+    wandb:
+      key: a44758ca07858594065872c389df0962658144f6
+      entity: whale03-org
+      project: mv_restoration
+
+# log:
+#   # SET SAVING PATH
+#   result_root_dir: RAE/ckpts/JIHYE/
+#   tracker:
+#     name: 
+#     wandb:
+#       key: 
+#       entity: 
+#       project:

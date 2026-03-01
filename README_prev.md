@@ -19,10 +19,13 @@ pip install -r requirements.txt
 ### 1. Training bash script
 ```bash
 # CUDA=0,1,2,3
-bash RAE/scripts/JIHYE/JIHYE_run_train_multiview_vggt_ddt_g12_lqkernel100_maxview8.sh
+bash RAE/scripts/JIHYE/JIHYE_run_train_multiview_vggt_ddt_g3_lqkernel50_maxview8.sh
 
 # CUDA=4,5,6,7
 bash RAE/scripts/JIHYE/JIHYE_run_train_multiview_vggt_ddt_g3_lqkernel100_maxview8.sh
+
+# CUDA=8,9,10,11
+bash RAE/scripts/JIHYE/JIHYE_run_train_multiview_vggt_ddt_g3_lqkernel200_maxview8.sh
 ```
 
-### 2. Training config yaml file : [MVR_VGGT (g3)](RAE/configs/JIHYE/JIHYE_run_train_multiview_vggt_ddt_g3.yaml) / [MVR_VGGT (g12)](RAE/configs/JIHYE/JIHYE_run_train_multiview_vggt_ddt_g12.yaml)
+### 2. Training config yaml file : [MVR_VGGT](RAE/configs/JIHYE/JIHYE_run_train_multiview_vggt_ddt_g3.yaml)

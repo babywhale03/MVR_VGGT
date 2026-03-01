@@ -419,7 +419,8 @@ def main():
     ### Resuming and checkpointing
     start_epoch = 0
     global_step = 0
-    maybe_resume_ckpt_path = find_resume_checkpoint(experiment_dir)
+    # maybe_resume_ckpt_path = find_resume_checkpoint(experiment_dir)
+    maybe_resume_ckpt_path = full_cfg.stage_2.ckpt
     if maybe_resume_ckpt_path is not None:
         logger.info(f"Experiment resume checkpoint found at {maybe_resume_ckpt_path}, automatically resuming...")
         ckpt_path = Path(maybe_resume_ckpt_path)
@@ -576,9 +577,9 @@ def main():
             running_loss += loss.item()
             epoch_metrics['loss'] += loss.detach()
 
-            if checkpoint_interval > 0 and step > 0 and step % checkpoint_interval == 0 and rank == 0:
+            if checkpoint_interval > 0 and global_step > 0 and global_step % checkpoint_interval == 0 and rank == 0:
                 logger.info(f"Saving checkpoint at epoch {epoch}...")
-                ckpt_path = f"{checkpoint_dir}/step-{step:07d}.pt" 
+                ckpt_path = f"{checkpoint_dir}/step-{global_step:07d}.pt" 
                 save_checkpoint(
                     ckpt_path,
                     global_step,

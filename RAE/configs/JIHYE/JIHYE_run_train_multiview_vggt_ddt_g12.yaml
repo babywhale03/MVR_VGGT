@@ -1,7 +1,7 @@
 stage_2:
   target: stage2.models.DDTMVRM_pos_multi.DiTwDDTHead
   save_folder: JIHYE_train_hypersim_nearcam_tartanair_nearrandom
-  exp_name: JIHYE_VGGTMVRM
+  exp_name: JIHYE_VGGTMVRM_0304
   params:
     input_size: 16
     patch_size: 1
@@ -58,7 +58,7 @@ training:
   grad_accum_steps: 1 
   ema_decay: 0.9995
   # SET NUMBER OF WORKERS TO GPU_NUM*4
-  num_workers: 16
+  num_workers: 48
   log_interval: 50
   # SET MODEL WEIGHT SAVING CKPT INTERVAL
   checkpoint_interval: 2000 # step

@@ -187,7 +187,7 @@ def main():
                 zs = torch.randn(*lq_latent.shape, generator=generator, device=device)
                 xt = zs + lq_latent
                 sample_model_kwargs = {"img": deg_img}
-                restored_latent = eval_sampler(xt, model.forward, **sample_model_kwargs)[-1].float()
+                restored_latent = eval_sampler(xt, model.forward, **sample_model_kwargs).float()
                 
                 vggt_result = {'restored_latent': restored_latent}
                 res_predictions = vggt_model(deg_img, extract_layer_num=extract_layer, 

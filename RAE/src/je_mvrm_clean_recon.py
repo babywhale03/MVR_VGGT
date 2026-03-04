@@ -634,7 +634,7 @@ def main():
                     sample_model_kwargs["img"] = clean_img.to(device)
 
                     with autocast(**autocast_kwargs):
-                        restored_latent = eval_sampler(xt, ema_model_fn, **sample_model_kwargs)[-1].float()
+                        restored_latent = eval_sampler(xt, ema_model_fn, **sample_model_kwargs).float()
                     
                     vggt_result = {'restored_latent': restored_latent}
                     restored_predictions = vggt_model(clean_img.to(device), extract_layer_num=extract_layer, 
@@ -723,7 +723,7 @@ def main():
                             sample_model_kwargs["img"] = val_clean_img.to(device)
 
                         with autocast(**autocast_kwargs):
-                            restored_latent = eval_sampler(val_xt, ema_model_fn, **sample_model_kwargs)[-1].float()
+                            restored_latent = eval_sampler(val_xt, ema_model_fn, **sample_model_kwargs).float()
 
                         vggt_result = {}
                         vggt_result['restored_latent'] = restored_latent # [B, 1041, 1024]

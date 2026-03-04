@@ -445,7 +445,7 @@ def main():
                     visual_sample_model_kwargs = deepcopy(sample_model_kwargs)
                     visual_sample_model_kwargs['y'] = labels[:8] 
                     with autocast(**autocast_kwargs):
-                        samples = eval_sampler(zs_samples, ema_model_fn, **visual_sample_model_kwargs)[-1]
+                        samples = eval_sampler(zs_samples, ema_model_fn, **visual_sample_model_kwargs)
                     samples.float()
                     if use_guidance:
                         samples, _ = samples.chunk(2, dim=0)

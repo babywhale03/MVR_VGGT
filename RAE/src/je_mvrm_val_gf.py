@@ -592,7 +592,7 @@ def main():
                     sample_model_kwargs["img"] = deg_img.to(device)
 
                     with autocast(**autocast_kwargs):
-                        restored_latent = eval_sampler(xt, ema_model_fn, **sample_model_kwargs)[-1].float()
+                        restored_latent = eval_sampler(xt, ema_model_fn, **sample_model_kwargs).float()
                         restored_latent = restored_latent[:, :, :, 1024:]
                     
                     vggt_result = {'restored_latent': restored_latent}
@@ -682,7 +682,7 @@ def main():
                             sample_model_kwargs["img"] = val_deg_img.to(device)
 
                         with autocast(**autocast_kwargs):
-                            restored_latent = eval_sampler(val_xt, ema_model_fn, **sample_model_kwargs)[-1].float()
+                            restored_latent = eval_sampler(val_xt, ema_model_fn, **sample_model_kwargs).float()
 
                         vggt_result = {}
                         vggt_result['restored_latent'] = restored_latent[:, :, :, 1024:] # [B, 1041, 1024]

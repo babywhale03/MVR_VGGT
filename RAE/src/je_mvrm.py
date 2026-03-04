@@ -628,7 +628,7 @@ def main():
                     sample_model_kwargs["img"] = deg_img.to(device)
 
                     with autocast(**autocast_kwargs):
-                        restored_latent = eval_sampler(val_xt, ema_model_fn, **sample_model_kwargs)[-1].float()
+                        restored_latent = eval_sampler(val_xt, ema_model_fn, **sample_model_kwargs).float()
                     
                     # restored_latent = restored_latent.unsqueeze(1)  
                     # restored_latent = rearrange(restored_latent, 'b s d pH pW -> b s (pH pW) d', pH=pH, pW=pW)  # [B, 1, 1036, 1024]

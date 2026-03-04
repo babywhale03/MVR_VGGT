@@ -476,24 +476,25 @@ def main():
             gt_poses = batch["gt_poses"].to(device)
             
             with torch.cuda.amp.autocast(dtype=torch.bfloat16):
-                breakpoint()
-                clean_out = vggt_model(clean_img, extract_layer_num=args.extract_layer)
-                clean_latent = clean_out["extracted_latent"][:, :, :, 1024:]
+                clean_out = vggt_model(clean_img, extract_layer_num=0)
+                # clean_latent = clean_out["extracted_latent"][:, :, :, 1024:]
+                clean_latent = clean_out["extracted_latent"]
                 clean_tokens = clean_out["aggregated_tokens_list"]
-                lq_out = vggt_model(deg_img, extract_layer_num=args.extract_layer)
-                lq_latent = lq_out["extracted_latent"][:, :, :, 1024:]
+                lq_out = vggt_model(deg_img, extract_layer_num=0)
+                # lq_latent = lq_out["extracted_latent"][:, :, :, 1024:]
+                lq_latent = lq_out["extracted_latent"]
                 lq_tokens = lq_out["aggregated_tokens_list"]
                 
                 # change_out = vggt_model(deg_img, extract_layer_num=12)
                 # change_latent = change_out["extracted_latent"][:, :, :, 1024:]
 
                 xt = torch.randn_like(lq_latent) + lq_latent
-                restored_latent = eval_sampler(xt, model.forward, img=deg_img)[-1].float()
+                restored_latent = eval_sampler(xt, model.forward, img=deg_img).float()
                 # restored_latent = torch.cat([clean_latent[:, :, :5, :], restored_latent[:, :, 5:, :]], dim=2)
                 # lq_cam_restored_latent = torch.cat([lq_latent[:, :, :5, :], restored_latent[:, :, 5:, :]], dim=2)
                 # clean_cam_restored_latent = torch.cat([clean_latent[:, :, :5, :], restored_latent[:, :, 5:, :]], dim=2)
             
-                res_out = vggt_model(deg_img, extract_layer_num=args.extract_layer, vggt_result={'restored_latent': restored_latent}, change_latent=True)
+                res_out = vggt_model(deg_img, extract_layer_num=0, vggt_result={'restored_latent': restored_latent}, change_latent=True)
                 # res_out = vggt_model(deg_img, extract_layer_num=3, vggt_result={'restored_latent': restored_latent, 'clean_latent': change_latent}, change_latent=True)  
                 # lq_cam_res_out = vggt_model(deg_img, extract_layer_num=3, vggt_result={'restored_latent': lq_cam_restored_latent}, change_latent=True)
                 # clean_cam_res_out = vggt_model(deg_img, extract_layer_num=3, vggt_result={'restored_latent': clean_cam_restored_latent}, change_latent=True)
@@ -509,7 +510,7 @@ def main():
                     # visualize_token_similarity(clean_tokens, lq_tokens, save_path=os.path.join(vis_feature_sim, f"sim_clean_lq_step_{i}.png"))
                     # visualize_token_similarity(clean_tokens, clean_cam_res_out_tokens, save_path=os.path.join(vis_feature_sim, f"sim_clean_cam_step_{i}.png"))
                     # visualize_token_similarity(lq_tokens, lq_cam_res_out_tokens, save_path=os.path.join(vis_feature_sim, f"sim_lq_cam_step_{i}.png"))
-                
+                print(f"Shape lq_latent: {lq_latent.shape}, res_latent: {restored_latent.shape}, clean_latent: {clean_latent.shape}")
             save_image(create_eval_grid(batch, lq_out, res_out), os.path.join(vis_depth_dir, f"depth_{i:03d}.png"), normalize=False)
 
             if "pose_vis" in args.eval_mode or "full" in args.eval_mode:

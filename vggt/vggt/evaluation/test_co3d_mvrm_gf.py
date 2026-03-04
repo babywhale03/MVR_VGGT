@@ -464,7 +464,7 @@ def process_sequence(model, eval_sampler, seq_name, seq_data, category, co3d_dir
                 val_xt = zs + val_lq_deg_latent 
                 sample_model_kwargs["img"] = deg_images.to(device)
                 # breakpoint()
-                restored_latent = eval_sampler(val_xt, model.forward, **sample_model_kwargs)[-1].float()
+                restored_latent = eval_sampler(val_xt, model.forward, **sample_model_kwargs).float()
 
                 vggt_result = {}
                 vggt_result['restored_latent'] = restored_latent

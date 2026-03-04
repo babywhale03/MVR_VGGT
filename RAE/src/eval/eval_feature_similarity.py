@@ -430,7 +430,7 @@ def main():
                 lq_tokens = lq_out["aggregated_tokens_list"]
                 
                 xt = torch.randn_like(lq_latent) + lq_latent
-                restored_latent = eval_sampler(xt, model.forward, img=deg_img)[-1].float()
+                restored_latent = eval_sampler(xt, model.forward, img=deg_img).float()
                 # restored_latent = torch.cat([lq_latent[:, :, :5, :], restored_latent[:, :, 5:, :]], dim=2)
                 lq_cam_restored_latent = torch.cat([lq_latent[:, :, :5, :], restored_latent[:, :, 5:, :]], dim=2)
                 clean_cam_restored_latent = torch.cat([clean_latent[:, :, :5, :], restored_latent[:, :, 5:, :]], dim=2)

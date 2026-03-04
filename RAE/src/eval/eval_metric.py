@@ -178,7 +178,7 @@ def run_evaluation(global_step, experiment_dir, val_loader, vggt_model, ema_mode
             lq_latent = lq_out["extracted_latent"][:, :, :, 1024:]
             
             xt = torch.randn_like(lq_latent) + lq_latent
-            restored_latent = eval_sampler(xt, ema_model.forward, img=deg_img)[-1].float()
+            restored_latent = eval_sampler(xt, ema_model.forward, img=deg_img).float()
             res_out = vggt_model(deg_img, extract_layer_num=3, vggt_result={'restored_latent': restored_latent}, change_latent=True)
 
         for v in range(deg_img.shape[1]):

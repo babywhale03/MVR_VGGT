@@ -357,6 +357,8 @@ def main():
     
     if training_cfg.get("scheduler"):
         scheduler, sched_msg = build_scheduler(optimizer, steps_per_epoch, training_cfg) # LambdaLR
+    else:
+        scheduler, sched_msg = None, None
      
     if len(data_cfg["train"]["dataset"]) == 1:
         sample_img = train_loader.dataset[0]["deg_img"].to(device) # [V, 3, H, W]
@@ -604,7 +606,7 @@ def main():
                     sample_model_kwargs["img"] = deg_img.to(device, dtype=dtype)
 
                     with autocast(**autocast_kwargs):
-                        restored_latent = eval_sampler(xt, ema_model_fn, **sample_model_kwargs)[-1].float()
+                        restored_latent = eval_sampler(xt, ema_model_fn, **sample_model_kwargs).float()
                     
                     vggt_result = {'restored_latent': restored_latent}
                     restored_predictions = vggt_model(deg_img.to(device, dtype=dtype), extract_layer_num=extract_layer, 
@@ -694,7 +696,7 @@ def main():
                             sample_model_kwargs["img"] = val_deg_img.to(device)
 
                         with autocast(**autocast_kwargs):
-                            restored_latent = eval_sampler(val_xt, ema_model_fn, **sample_model_kwargs)[-1].float()
+                            restored_latent = eval_sampler(val_xt, ema_model_fn, **sample_model_kwargs).float()
 
                         vggt_result = {}
                         vggt_result['restored_latent'] = restored_latent # [B, 1041, 1024]
@@ -753,6 +755,8 @@ def main():
                             save_image(grid, save_path, normalize=False)
 
                         logger.info("Sampling done.")
+                        del restored_latent, val_predictions, val_depths
+                        torch.cuda.empty_cache()
 
                 if rank == 0:
                     avg_val_metrics = {k: v / val_count for k, v in val_metrics.items()} if val_count > 0 else {}

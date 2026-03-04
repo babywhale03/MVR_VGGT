@@ -1,4 +1,4 @@
-jaeeun/MVR_vggt/README.md## 📦 Installation 
+## 📦 Installation 
 
 ### 1. Conda Environment
 

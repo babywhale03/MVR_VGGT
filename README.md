@@ -18,7 +18,7 @@ pip install -r requirements.txt
 
 ### 1. Training bash script
 ```bash
-# CUDA=0,1,2,3,4,5,6,7,8,9,10,11
+# CUDA=0,1,2,3,4,5,6,7
 bash RAE/scripts/JIHYE/JIHYE_run_train_multiview_vggt_ddt_g12_lqkernel100_maxview8.sh
 ```
 

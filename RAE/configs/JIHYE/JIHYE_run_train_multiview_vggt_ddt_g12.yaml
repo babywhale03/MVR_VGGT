@@ -58,7 +58,7 @@ training:
   grad_accum_steps: 1 
   ema_decay: 0.9995
   # SET NUMBER OF WORKERS TO GPU_NUM*4
-  num_workers: 48
+  num_workers: 32
   log_interval: 50
   # SET MODEL WEIGHT SAVING CKPT INTERVAL
   checkpoint_interval: 2000 # step

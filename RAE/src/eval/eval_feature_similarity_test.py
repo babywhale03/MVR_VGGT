@@ -417,15 +417,13 @@ def parse_args():
     parser.add_argument("--num-views", type=int, default=10)
     parser.add_argument("--kernel-size", type=int, default=100)
     parser.add_argument("--eval-mode", type=str, default=["full"], choices=["full", "metric", "feature_sim"])
-    parser.add_argument("--extract-layer", type=int, default=12)
     return parser.parse_args()
 
 def main():
     args = parse_args()
-    breakpoint()
     rank, world_size, device = setup_distributed()
     
-    eval_dir = os.path.join(args.results_dir, f"{Path(args.ckpt).stem}_full_kernel{args.kernel_size}_view{args.num_views}_testg12")
+    eval_dir = os.path.join(args.results_dir, f"{Path(args.ckpt).stem}_full_mvrm_g3g12_kernel{args.kernel_size}_view{args.num_views}")
     logger = setup_eval_logger(eval_dir)
     
     full_cfg = OmegaConf.load(args.config)
@@ -463,6 +461,7 @@ def main():
     metrics_accum = defaultdict(float)
     all_r_errors, all_t_errors = [], []
     lq_all_r_errors, lq_all_t_errors = [], []
+    all_r_errors_back, all_t_errors_back = [], []
 
     total_frames = 0
 
@@ -476,11 +475,10 @@ def main():
             gt_poses = batch["gt_poses"].to(device)
             
             with torch.cuda.amp.autocast(dtype=torch.bfloat16):
-                breakpoint()
-                clean_out = vggt_model(clean_img, extract_layer_num=args.extract_layer)
+                clean_out = vggt_model(clean_img, extract_layer_num=3)
                 clean_latent = clean_out["extracted_latent"][:, :, :, 1024:]
                 clean_tokens = clean_out["aggregated_tokens_list"]
-                lq_out = vggt_model(deg_img, extract_layer_num=args.extract_layer)
+                lq_out = vggt_model(deg_img, extract_layer_num=3)
                 lq_latent = lq_out["extracted_latent"][:, :, :, 1024:]
                 lq_tokens = lq_out["aggregated_tokens_list"]
                 
@@ -493,7 +491,7 @@ def main():
                 # lq_cam_restored_latent = torch.cat([lq_latent[:, :, :5, :], restored_latent[:, :, 5:, :]], dim=2)
                 # clean_cam_restored_latent = torch.cat([clean_latent[:, :, :5, :], restored_latent[:, :, 5:, :]], dim=2)
             
-                res_out = vggt_model(deg_img, extract_layer_num=args.extract_layer, vggt_result={'restored_latent': restored_latent}, change_latent=True)
+                res_out = vggt_model(deg_img, extract_layer_num=3, vggt_result={'restored_latent': restored_latent}, change_latent=True)
                 # res_out = vggt_model(deg_img, extract_layer_num=3, vggt_result={'restored_latent': restored_latent, 'clean_latent': change_latent}, change_latent=True)  
                 # lq_cam_res_out = vggt_model(deg_img, extract_layer_num=3, vggt_result={'restored_latent': lq_cam_restored_latent}, change_latent=True)
                 # clean_cam_res_out = vggt_model(deg_img, extract_layer_num=3, vggt_result={'restored_latent': clean_cam_restored_latent}, change_latent=True)
@@ -501,16 +499,42 @@ def main():
                 res_out_tokens = res_out["aggregated_tokens_list"]
                 # lq_cam_res_out_tokens = lq_cam_res_out["aggregated_tokens_list"]
                 # clean_cam_res_out_tokens = clean_cam_res_out["aggregated_tokens_list"]
+                res_out_dpt4 = res_out_tokens[4]
+                res_out_dpt11 = res_out_tokens[11]
+
+                clean_out_back = vggt_model(clean_img, extract_layer_num=12)
+                clean_latent_back = clean_out_back["extracted_latent"][:, :, :, 1024:]
+                clean_tokens_back = clean_out_back["aggregated_tokens_list"]
+                lq_out_back = vggt_model(deg_img, extract_layer_num=12)
+                lq_latent_back = lq_out_back["extracted_latent"][:, :, :, 1024:]
+                lq_tokens_back = lq_out_back["aggregated_tokens_list"]
+
+                xt_back = torch.randn_like(lq_latent_back) + lq_latent_back
+                restored_latent_back = eval_sampler(xt_back, model.forward, img=deg_img)[-1].float()
+                # restored_latent = torch.cat([clean_latent[:, :, :5, :], restored_latent[:, :, 5:, :]], dim=2)
+                # lq_cam_restored_latent = torch.cat([lq_latent[:, :, :5, :], restored_latent[:, :, 5:, :]], dim=2)
+                # clean_cam_restored_latent = torch.cat([clean_latent[:, :, :5, :], restored_latent[:, :, 5:, :]], dim=2)
+            
+                res_out_back = vggt_model(deg_img, extract_layer_num=12, vggt_result={'restored_latent': restored_latent_back, 'res_out_dpt4': res_out_dpt4, 'res_out_dpt11': res_out_dpt11}, change_latent=True)
+                # res_out = vggt_model(deg_img, extract_layer_num=3, vggt_result={'restored_latent': restored_latent, 'clean_latent': change_latent}, change_latent=True)  
+                # lq_cam_res_out = vggt_model(deg_img, extract_layer_num=3, vggt_result={'restored_latent': lq_cam_restored_latent}, change_latent=True)
+                # clean_cam_res_out = vggt_model(deg_img, extract_layer_num=3, vggt_result={'restored_latent': clean_cam_restored_latent}, change_latent=True)
+
+                res_out_tokens_back = res_out_back["aggregated_tokens_list"]
+                # lq_cam_res_out_tokens = lq_cam_res_out["aggregated_tokens_list"]
+                # clean_cam_res_out_tokens = clean_cam_res_out["aggregated_tokens_list"]
 
                 if "feature_sim" in args.eval_mode or "full" in args.eval_mode:
                     visualize_vggt_stepwise_analysis(clean_tokens, lq_tokens, res_out_tokens, save_path=os.path.join(vis_feature_sim, f"sim_step_{i}.png"))
+                    visualize_vggt_stepwise_analysis(clean_tokens_back, lq_tokens_back, res_out_tokens_back, save_path=os.path.join(vis_feature_sim, f"sim_step_{i}_back.png"))
                     # visualize_token_similarity(clean_tokens, res_out_tokens, save_path=os.path.join(vis_feature_sim, f"sim_lq_step_{i}.png"))
                     # visualize_token_similarity(lq_tokens, res_out_tokens, save_path=os.path.join(vis_feature_sim, f"sim_lq_step_{i}.png"))
                     # visualize_token_similarity(clean_tokens, lq_tokens, save_path=os.path.join(vis_feature_sim, f"sim_clean_lq_step_{i}.png"))
                     # visualize_token_similarity(clean_tokens, clean_cam_res_out_tokens, save_path=os.path.join(vis_feature_sim, f"sim_clean_cam_step_{i}.png"))
                     # visualize_token_similarity(lq_tokens, lq_cam_res_out_tokens, save_path=os.path.join(vis_feature_sim, f"sim_lq_cam_step_{i}.png"))
-                
+            
             save_image(create_eval_grid(batch, lq_out, res_out), os.path.join(vis_depth_dir, f"depth_{i:03d}.png"), normalize=False)
+            save_image(create_eval_grid(batch, lq_out, res_out_back), os.path.join(vis_depth_dir, f"depth_{i:03d}_back.png"), normalize=False)
 
             if "pose_vis" in args.eval_mode or "full" in args.eval_mode:
                 v_metrics_accum = defaultdict(float)
@@ -519,6 +543,7 @@ def main():
                     lq_d_m = compute_depth_metrics(batch["gt_depth"][0, v, 0], lq_out["depth"][0, v].squeeze(-1).cpu())
                     # lq_cam_d_m = compute_depth_metrics(batch["gt_depth"][0, v, 0], lq_cam_res_out["depth"][0, v].squeeze(-1).cpu())
                     # hq_cam_d_m = compute_depth_metrics(batch["gt_depth"][0, v, 0], clean_cam_res_out["depth"][0, v].squeeze(-1).cpu())
+                    d_m_back = compute_depth_metrics(batch["gt_depth"][0, v, 0], res_out_back["depth"][0, v].squeeze(-1).cpu())
 
                     if d_m:
                         for k, val in d_m.items(): metrics_accum[f"depth_{k}"] += val
@@ -531,6 +556,10 @@ def main():
                     #     for k, val in lq_cam_d_m.items(): metrics_accum[f"lq_cam_depth_{k}"] += val
                     # if hq_cam_d_m:
                     #     for k, val in hq_cam_d_m.items(): metrics_accum[f"hq_cam_depth_{k}"] += val
+
+                    if d_m_back:
+                        for k, val in d_m_back.items(): metrics_accum[f"depth_back_{k}"] += val
+                        for k, val in d_m_back.items(): v_metrics_accum[f"depth_back_{k}"] += val
 
                 with open(os.path.join(vis_depth_metric, f"depth_metrics_{i:03d}.txt"), "w") as f:
                     for k, v in v_metrics_accum.items():
@@ -550,6 +579,7 @@ def main():
                             
                 v_gt_se3 = gt_poses[0] # [V, 4, 4]
                 v_res_se3 = enc_to_se3(res_out["pose_enc"], deg_img.shape[-2:]) # [V, 4, 4] 
+                v_res_se3_back = enc_to_se3(res_out_back["pose_enc"], deg_img.shape[-2:])
                 # v_lq_cam_res_se3 = enc_to_se3(lq_cam_res_out["pose_enc"], deg_img.shape[-2:])
                 # v_hq_cam_res_se3 = enc_to_se3(clean_cam_res_out["pose_enc"], deg_img.shape[-2:])
                 v_lq_se3 = enc_to_se3(lq_out["pose_enc"], deg_img.shape[-2:])
@@ -563,16 +593,19 @@ def main():
                 # lq_c = get_centers(lq_se3_rel)
                 gt_c = extrinsic_to_cam_center(v_gt_se3).cpu().numpy()  
                 res_c = extrinsic_to_cam_center(v_res_se3).cpu().numpy()
+                res_c_back = extrinsic_to_cam_center(v_res_se3_back).cpu().numpy()
                 lq_c = extrinsic_to_cam_center(v_lq_se3).cpu().numpy()
                 # lq_cam_c = extrinsic_to_cam_center(v_lq_cam_res_se3).cpu().numpy()
                 # hq_cam_c = extrinsic_to_cam_center(v_hq_cam_res_se3).cpu().numpy()
 
                 res_c = sim3_align(res_c, gt_c)
+                res_c_back = sim3_align(res_c_back, gt_c)
                 lq_c = sim3_align(lq_c, gt_c)
                 # lq_cam_c = sim3_align(lq_cam_c, gt_c)
                 # hq_cam_c = sim3_align(hq_cam_c, gt_c)
 
                 r_err, t_err = se3_to_relative_pose_error(v_res_se3, v_gt_se3, v_res_se3.shape[-3])
+                r_err_back, t_err_back = se3_to_relative_pose_error(v_res_se3_back, v_gt_se3, v_res_se3_back.shape[-3])
                 # lq_cam_r_err, lq_cam_t_err = se3_to_relative_pose_error(v_lq_cam_res_se3, v_gt_se3, v_lq_cam_res_se3.shape[-3])
                 # hq_cam_r_err, hq_cam_t_err = se3_to_relative_pose_error(v_hq_cam_res_se3, v_gt_se3, v_hq_cam_res_se3.shape[-3])
                 lq_r_err, lq_t_err = se3_to_relative_pose_error(v_lq_se3, v_gt_se3, v_lq_se3.shape[-3])
@@ -581,6 +614,8 @@ def main():
                 t_err_np = t_err.cpu().numpy()
                 lq_r_err_np = lq_r_err.cpu().numpy()
                 lq_t_err_np = lq_t_err.cpu().numpy()
+                r_err_back_np = r_err_back.cpu().numpy()
+                t_err_back_np = t_err_back.cpu().numpy()
                 # lq_cam_r_err_np = lq_cam_r_err.cpu().numpy()
                 # lq_cam_t_err_np = lq_cam_t_err.cpu().numpy()
                 # hq_cam_r_err_np = hq_cam_r_err.cpu().numpy()
@@ -591,6 +626,10 @@ def main():
                     "auc15": calculate_auc_np(r_err_np, t_err_np, 15),
                     "auc05": calculate_auc_np(r_err_np, t_err_np, 5),
                     "auc03": calculate_auc_np(r_err_np, t_err_np, 3),
+                    "back_auc30": calculate_auc_np(r_err_back_np, t_err_back_np, 30),
+                    "back_auc15": calculate_auc_np(r_err_back_np, t_err_back_np, 15),
+                    "back_auc05": calculate_auc_np(r_err_back_np, t_err_back_np, 5),
+                    "back_auc03": calculate_auc_np(r_err_back_np, t_err_back_np, 3),
                     "lq_auc30": calculate_auc_np(lq_r_err_np, lq_t_err_np, 30),
                     "lq_auc15": calculate_auc_np(lq_r_err_np, lq_t_err_np, 15),
                     "lq_auc05": calculate_auc_np(lq_r_err_np, lq_t_err_np, 5),
@@ -608,6 +647,10 @@ def main():
                 if not np.isnan(lq_r_err_np).any() and not np.isnan(lq_t_err_np).any():
                     lq_all_r_errors.extend(lq_r_err_np)
                     lq_all_t_errors.extend(lq_t_err_np)
+
+                if not np.isnan(r_err_back_np).any() and not np.isnan(t_err_back_np).any():
+                    all_r_errors_back.extend(r_err_back_np)
+                    all_t_errors_back.extend(t_err_back_np)
                     
                 # if not np.isnan(lq_cam_r_err_np).any() and not np.isnan(lq_cam_t_err_np).any():
                 #     lq_cam_all_r_errors.extend(lq_cam_r_err_np)
@@ -619,6 +662,8 @@ def main():
 
                 metrics_accum["pose_R_err"] += r_err.mean().item()
                 metrics_accum["pose_T_err"] += t_err.mean().item()  
+                metrics_accum["pose_R_err_back"] += r_err_back.mean().item()
+                metrics_accum["pose_T_err_back"] += t_err_back.mean().item()
                 metrics_accum["lq_pose_R_err"] += lq_r_err.mean().item()
                 metrics_accum["lq_pose_T_err"] += lq_t_err.mean().item()
                 # metrics_accum["lq_cam_pose_R_err"] += lq_cam_r_err.mean().item()
@@ -629,6 +674,12 @@ def main():
                 plot_cam_trajectory_all(
                     gt_c, res_c, lq_c,
                     save_path=os.path.join(vis_pose_dir, f"traj_{i:03d}.png")
+                )
+
+                
+                plot_cam_trajectory_all(
+                    gt_c, res_c_back, lq_c,
+                    save_path=os.path.join(vis_pose_dir, f"traj_back_{i:03d}.png")
                 )
                 # plot_cam_trajectory(gt_c, res_c, lq_c, os.path.join(vis_pose_dir, f"traj_{i:03d}.png"))
                 # plot_cam_trajectory(gt_c, res_c, lq_c, os.path.join(vis_pose_dir, f"traj_only_pred_{i:03d}.png"), only_pred=True)
@@ -646,6 +697,13 @@ def main():
                 auc15 = calculate_auc_np(r_err_np, t_err_np, 15)
                 auc05 = calculate_auc_np(r_err_np, t_err_np, 5)
                 auc03 = calculate_auc_np(r_err_np, t_err_np, 3)
+
+                r_err_np_back = np.array(all_r_errors_back)
+                t_err_np_back = np.array(all_t_errors_back)
+                auc30_back = calculate_auc_np(r_err_np_back, t_err_np_back, 30)
+                auc15_back = calculate_auc_np(r_err_np_back, t_err_np_back, 15)
+                auc05_back = calculate_auc_np(r_err_np_back, t_err_np_back, 5)
+                auc03_back = calculate_auc_np(r_err_np_back, t_err_np_back, 3)
 
                 lq_r_err_np = np.array(lq_all_r_errors)
                 lq_t_err_np = np.array(lq_all_t_errors)
@@ -684,6 +742,10 @@ def main():
                 logger.info(f"{'lq_pose_AUC15':<20}: {lq_auc15:.6f}")
                 logger.info(f"{'lq_pose_AUC05':<20}: {lq_auc05:.6f}")
                 logger.info(f"{'lq_pose_AUC03':<20}: {lq_auc03:.6f}")
+                logger.info(f"{'back_pose_AUC30':<20}: {auc30_back:.6f}")
+                logger.info(f"{'back_pose_AUC15':<20}: {auc15_back:.6f}")
+                logger.info(f"{'back_pose_AUC05':<20}: {auc05_back:.6f}")
+                logger.info(f"{'back_pose_AUC03':<20}: {auc03_back:.6f}")
 
             if total_frames > 0:
                 num_seq = min(args.num_sequences, len(val_loader))

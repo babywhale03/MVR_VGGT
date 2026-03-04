@@ -273,6 +273,7 @@ class Transport:
         """
         # x1 (clean_img_latent): [B, S, 1041, 1024]
         # deg_latent: [B, S, 1041, 1024]
+        breakpoint()
         if model_kwargs == None:
             model_kwargs = {}
         

@@ -65,6 +65,10 @@ class VGGT(nn.Module, PyTorchModelHubMixin):
         predictions = {}
 
         with torch.cuda.amp.autocast(enabled=False):
+            if kwargs.get("vgg_result") and kwargs["vgg_result"].get("res_out_dpt4") is not None:
+                aggregated_tokens_list[4] = kwargs["vgg_result"]["res_out_dpt4"]
+            if kwargs.get("vgg_result") and kwargs["vgg_result"].get("res_out_dpt11") is not None:
+                aggregated_tokens_list[11] = kwargs["vgg_result"]["res_out_dpt11"]
             predictions["aggregated_tokens_list"] = aggregated_tokens_list
             predictions["extracted_latent"] = aggregated_tokens_list[extract_layer_num] # [8, 1, 1041, 2048]
 

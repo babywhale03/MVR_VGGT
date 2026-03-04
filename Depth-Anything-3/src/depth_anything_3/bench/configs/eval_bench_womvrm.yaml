@@ -58,20 +58,6 @@ model:
   # path: depth-anything/DA3-GIANT-1.1
 
 # ==============================================================================
-# Workspace Configuration
-# ==============================================================================
-workspace:
-  # Working directory for outputs (model results, metrics, etc.)
-  work_dir: /mnt/dataset1/MV_Restoration/ECCV26_RESULTS/VGGT/wo_mvrm/clean
-
-# ==============================================================================
-# Dataset Configuration
-# ==============================================================================
-dataset:
-  clean_root_path: /mnt/dataset1/MV_Restoration/da3_benchmark_dataset/clean
-  deg_root_path: /mnt/dataset1/MV_Restoration/da3_benchmark_dataset/cam_blur_300
-
-# ==============================================================================
 # Evaluation Configuration
 # ==============================================================================
 eval:
@@ -81,16 +67,16 @@ eval:
     - eth3d
     - 7scenes
     - scannetpp
-    # - hiroom
-    # - dtu
-    # - dtu64
+    - hiroom
+    - dtu
+    - dtu64
 
   # Evaluation modes
   # Options: pose, recon_unposed, recon_posed, view_syn
   modes:
     - pose
     - recon_unposed
-    - recon_posed
+    # - recon_posed
 
   # Reference view selection strategy for inference
   # Options: first, saddle_balanced, auto, mid

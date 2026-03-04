@@ -1,3 +1,4 @@
+import os
 import time
 import torch
 import torch.nn as nn
@@ -7,7 +8,9 @@ from typing import Optional, Sequence, List, Dict, Any
 import sys
 from addict import Dict as AddictDict
 from torch.cuda.amp import autocast, GradScaler
+from torchvision.utils import save_image
 
+from RAE.src.utils.eval_vis_utils import *
 from vggt.vggt.models.vggt import VGGT
     
 from depth_anything_3.cfg import create_object, load_config
@@ -87,21 +90,39 @@ class VGGTInference(nn.Module):
         eval_sampler=None,
         generator=None,
         config=None,
+        work_dir=None,
+        scene_info=None,
+        use_pose=None
     ) -> Prediction:
         dtype = torch.bfloat16 if torch.cuda.get_device_capability()[0] >= 8 else torch.float16
         autocast_dtype = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
         autocast_kwargs = dict(dtype=autocast_dtype)
 
+        data, scene = scene_info 
+        pose_setting = 'pose' if use_pose else 'unposed'
+        
         if "gs" in export_format:
             assert infer_gs, "must set `infer_gs=True` to perform gs-related export."
 
         if "colmap" in export_format:
             assert isinstance(image[0], str), "`image` must be image paths for COLMAP export."
 
+        if 'lq_image_files' in image.keys():
+            lq_imgs_cpu, _, _ = self._preprocess_inputs(
+                image.lq_image_files, None, None, process_res, process_res_method
+            )
+            lq_imgs, _, _ = self._prepare_model_inputs(lq_imgs_cpu, None, None)
+
+        if 'res_image_files' in image.keys():
+            res_imgs_cpu, _, _ = self._preprocess_inputs(
+                image.res_image_files, None, None, process_res, process_res_method
+            )
+            res_imgs, _, _ = self._prepare_model_inputs(res_imgs_cpu, None, None)
+
         # Preprocess images
         print("Preprocessing Inputs...")
         imgs_cpu, extrinsics, intrinsics = self._preprocess_inputs(
-            image, extrinsics, intrinsics, process_res, process_res_method
+            image.image_files, extrinsics, intrinsics, process_res, process_res_method
         )
 
         # Prepare tensors for model
@@ -112,29 +133,118 @@ class VGGTInference(nn.Module):
         print("Normalizing Extrinsics...")
         ex_t_norm = self._normalize_extrinsics(ex_t.clone() if ex_t is not None else None)
         
+        vis_depth_dir, vis_depth_metric, vis_pose_dir, vis_feature_sim, vis_pose_metric = os.path.join(work_dir, "depth_vis", data, pose_setting), os.path.join(work_dir, "depth_metrics", data, pose_setting), os.path.join(work_dir, "pose_vis", data, pose_setting), os.path.join(work_dir, "feature_sim", data, pose_setting), os.path.join(work_dir, "pose_metric", data, pose_setting)
+        os.makedirs(vis_depth_dir, exist_ok=True); os.makedirs(vis_depth_metric, exist_ok=True); os.makedirs(vis_pose_dir, exist_ok=True); os.makedirs(vis_feature_sim, exist_ok=True); os.makedirs(vis_pose_metric, exist_ok=True)
+
         if config["stage_2"]["model"] == "VGGTMVRM":
             sample_model_kwargs = dict()
+            
             with torch.no_grad():
                 with torch.cuda.amp.autocast(dtype=dtype):
                     print("Using VGGTMVRM inference...")
-                    val_lq_predictions = self._run_model_forward(imgs, extract_layer_num=config["stage_2"]["extract_layer"])
+                    breakpoint()
+                    clean_predictions = self._run_model_forward(imgs)
+                    clean_tokens = clean_predictions["aggregated_tokens_list"]
+                    clean_depth = clean_predictions["depth"]
+                    val_lq_predictions = self._run_model_forward(lq_imgs, extract_layer_num=config["stage_2"]["extract_layer"])
                     val_lq_deg_latent = val_lq_predictions["extracted_latent"][:, :, :, 1024:]
+                    val_lq_tokens = val_lq_predictions["aggregated_tokens_list"]
+                    lq_depth = val_lq_predictions["depth"]
+
                     generator.manual_seed(42)
                     zs = torch.randn(*val_lq_deg_latent.shape, generator=generator, device=imgs.device)
                     val_xt = zs + val_lq_deg_latent
                     sample_model_kwargs["img"] = imgs.to(val_lq_deg_latent.device)
 
                 with autocast(**autocast_kwargs):
+                    torch.cuda.empty_cache()
                     restored_latent = eval_sampler(val_xt, stage2_model.forward, **sample_model_kwargs).float()
                     # restored_latent[:, :, :5, :] = val_lq_deg_latent[:, :, :5, :].float()
 
                 vggt_result = {}
                 vggt_result['restored_latent'] = restored_latent     
 
-                raw_output = self._run_model_forward(imgs, extract_layer_num=config["stage_2"]["extract_layer"], vggt_result=vggt_result, change_latent=True)
+                raw_output = self._run_model_forward(lq_imgs, extract_layer_num=config["stage_2"]["extract_layer"], vggt_result=vggt_result, change_latent=True)
+                raw_tokens = raw_output["aggregated_tokens_list"]
+                raw_depth = raw_output["depth"]
+
+                visualize_vggt_stepwise_analysis(clean_tokens, val_lq_tokens, raw_tokens, save_path=os.path.join(vis_feature_sim, f"{scene}.png"))
+                depth_vis_path = os.path.join(vis_depth_dir, f"{scene}.png")
+                os.makedirs(os.path.dirname(depth_vis_path), exist_ok=True)
+                save_image(vis_depth_all(imgs[0], clean_depth[0], lq_imgs[0], lq_depth[0], res_depth=raw_depth[0]), depth_vis_path, normalize=False)
+                save_depth_metrics(clean_depth, lq_depth, res_depth=raw_depth, save_path=os.path.join(vis_depth_metric, f"{scene}.txt"))
+                save_pose_metrics(
+                    imgs[0], clean_predictions["pose_enc"], 
+                    lq_imgs[0], val_lq_predictions["pose_enc"], 
+                    res_pose=raw_output["pose_enc"], 
+                    metric_save_path=os.path.join(vis_pose_metric, f"{scene}.txt"),
+                    plot_save_path=os.path.join(vis_pose_dir, f"{scene}.png")
+                )  
+
+        elif config["stage_2"]["model"] == "VGGT":
+            with torch.no_grad():
+                with torch.cuda.amp.autocast(dtype=dtype):
+                    print("Using VGGT inference...")
+                    clean_predictions = self._run_model_forward(imgs)
+                    clean_tokens = clean_predictions["aggregated_tokens_list"]
+                    clean_depth = clean_predictions["depth"]
+                    lq_predictions = self._run_model_forward(lq_imgs)
+                    lq_tokens = lq_predictions["aggregated_tokens_list"]
+                    lq_depth = lq_predictions["depth"]
+                    raw_output = self._run_model_forward(res_imgs)
+                    raw_tokens = raw_output["aggregated_tokens_list"]
+                    raw_depth = raw_output["depth"]
+
+                    visualize_vggt_stepwise_analysis(clean_tokens, lq_tokens, raw_tokens, save_path=os.path.join(vis_feature_sim, f"{scene}.png"))
+                    depth_vis_path = os.path.join(vis_depth_dir, f"{scene}.png")
+                    os.makedirs(os.path.dirname(depth_vis_path), exist_ok=True)
+                    save_image(vis_depth_all(imgs[0], clean_depth[0], lq_imgs[0], lq_depth[0], res_imgs[0], raw_depth[0]), depth_vis_path, normalize=False)
+                    save_depth_metrics(clean_depth, lq_depth, res_depth=raw_depth, save_path=os.path.join(vis_depth_metric, f"{scene}.txt"))
+                    save_pose_metrics(
+                        imgs[0], clean_predictions["pose_enc"], 
+                        lq_imgs[0], lq_predictions["pose_enc"], 
+                        res_img=res_imgs[0], res_pose=raw_output["pose_enc"], 
+                        metric_save_path=os.path.join(vis_pose_metric, f"{scene}.txt"),
+                        plot_save_path=os.path.join(vis_pose_dir, f"{scene}.png")
+                    )
+
+        elif config["stage_2"]["model"] == "VGGT_HQ":
+            with torch.no_grad():
+                with torch.cuda.amp.autocast(dtype=dtype):
+                    print("Using VGGT_HQ inference...")
+                    clean_predictions = self._run_model_forward(imgs)
+                    clean_tokens = clean_predictions["aggregated_tokens_list"]
+                    clean_depth = clean_predictions["depth"]
+
+                    raw_output = clean_predictions
+
+                    depth_vis_path = os.path.join(vis_depth_dir, f"{scene}.png")
+                    os.makedirs(os.path.dirname(depth_vis_path), exist_ok=True)
+                    save_image(vis_depth_hq(imgs[0], clean_depth[0]), depth_vis_path, normalize=False)
         else:
-            print("Using VGGT inference...")
-            raw_output = self._run_model_forward(imgs)
+            with torch.no_grad():
+                with torch.cuda.amp.autocast(dtype=dtype):
+                    print("Using VGGT_LQ inference...")
+                    clean_predictions = self._run_model_forward(imgs)
+                    clean_tokens = clean_predictions["aggregated_tokens_list"]
+                    clean_depth = clean_predictions["depth"]
+                    lq_predictions = self._run_model_forward(lq_imgs)
+                    lq_tokens = lq_predictions["aggregated_tokens_list"]
+                    lq_depth = lq_predictions["depth"]
+
+                    raw_output = lq_predictions
+
+                    visualize_vggt_stepwise_analysis(clean_tokens, lq_tokens, save_path=os.path.join(vis_feature_sim, f"{scene}.png"))
+                    depth_vis_path = os.path.join(vis_depth_dir, f"{scene}.png")
+                    os.makedirs(os.path.dirname(depth_vis_path), exist_ok=True)
+                    save_image(vis_depth_all(imgs[0], clean_depth[0], lq_imgs[0], lq_depth[0]), depth_vis_path, normalize=False)
+                    save_depth_metrics(clean_depth, lq_depth, save_path=os.path.join(vis_depth_metric, f"{scene}.txt"))
+                    save_pose_metrics(
+                        imgs[0], clean_predictions["pose_enc"], 
+                        lq_imgs[0], lq_predictions["pose_enc"],
+                        metric_save_path=os.path.join(vis_pose_metric, f"{scene}.txt"),
+                        plot_save_path=os.path.join(vis_pose_dir, f"{scene}.png")
+                    )
 
         # Convert raw output to prediction
         print("Converting to Prediction...")
@@ -209,7 +319,6 @@ class VGGTInference(nn.Module):
         process_res_method: str = "upper_bound_resize",
     ) -> tuple[torch.Tensor, torch.Tensor | None, torch.Tensor | None]:
         """Preprocess input images using input processor."""
-        # breakpoint()
         start_time = time.time()
         # imgs_cpu: [38, 3, 336, 504]
         imgs_cpu, extrinsics, intrinsics = self.input_processor(
@@ -308,7 +417,6 @@ class VGGTInference(nn.Module):
         ransac_view_thresh: int = 10,
     ) -> Prediction:
         """Align depth map to input extrinsics"""
-        breakpoint()
         if extrinsics is None:
             return prediction
         prediction.intrinsics = intrinsics.numpy()
@@ -355,7 +463,6 @@ class VGGTInference(nn.Module):
         end_time = time.time()
         logger.info(f"Export Results Done. Time: {end_time - start_time} seconds")
 
-    
     def _get_model_device(self) -> torch.device:
         """
         Get the device where the model is located.

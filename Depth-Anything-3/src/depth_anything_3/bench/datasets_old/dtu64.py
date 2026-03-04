@@ -30,14 +30,11 @@ from addict import Dict
 
 from depth_anything_3.bench.dataset import Dataset
 from depth_anything_3.bench.registries import MONO_REGISTRY, MV_REGISTRY
-from depth_anything_3.utils.constants_new import (
-
-    # PHO
-    DA3_LQ_ROOT_PATH,
-    DA3_RES_ROOT_PATH,
-    
-    DTU64_CAMERA_ROOT,
-    DTU64_EVAL_DATA_ROOT,
+from depth_anything_3.utils.constants import (
+    DA3_CLEAN_ROOT_PATH,
+    DA3_DEG_ROOT_PATH,
+    # DTU64_CAMERA_ROOT,
+    # DTU64_EVAL_DATA_ROOT,
     DTU64_SCENES,
 )
 
@@ -67,12 +64,13 @@ class DTU64(Dataset):
         - recon_posed: 3D reconstruction (no GT depth available)
     """
 
-    # PHO
-    da3_lq_root = os.path.join(DA3_LQ_ROOT_PATH, 'dtu64')
-    da3_res_root = os.path.join(DA3_RES_ROOT_PATH, 'dtu64')
 
-    data_root = DTU64_EVAL_DATA_ROOT
-    camera_root = DTU64_CAMERA_ROOT
+    # pho
+    da3_clean_root_path = DA3_CLEAN_ROOT_PATH
+    da3_deg_root_path = DA3_DEG_ROOT_PATH
+    
+    # data_root = DTU64_EVAL_DATA_ROOT
+    # camera_root = DTU64_CAMERA_ROOT
     SCENES = DTU64_SCENES
 
     def __init__(self):
@@ -122,33 +120,16 @@ class DTU64(Dataset):
         if scene in self._scene_cache:
             return self._scene_cache[scene]
 
-        rgb_folder = os.path.join(self.data_root, scene, "image")
+        rgb_folder = os.path.join(self.da3_deg_root_path, 'dtu64', scene, "image")
+
         # Get all PNG files sorted
-        files = sorted(glob.glob(os.path.join(rgb_folder, "*.png")))
+        files = sorted(glob.glob(os.path.join(rgb_folder, "*")))
+
         # Reorder: place index 33 first (reference view convention)
         if len(files) > 33:
             files = [files[33]] + files[:33] + files[34:]
-            
-            
-        # PHO (LQ)
-        lq_folder = os.path.join(self.da3_lq_root, scene, "image")
-        lq_files = sorted(glob.glob(os.path.join(lq_folder, "*.jpg")))
-        if len(lq_files) > 33:
-            lq_files = [lq_files[33]] + lq_files[:33] + lq_files[34:]
-        
-
-        # PHO (RES)
-        res_folder = os.path.join(self.da3_res_root, scene, "image")
-        res_files = sorted(glob.glob(os.path.join(res_folder, "*.png")))
-        if len(res_files) > 33:
-            res_files = [res_files[33]] + res_files[:33] + res_files[34:]
 
         out = Dict({
-            
-            # PHO
-            "lq_image_files": lq_files,
-            "res_image_files": res_files,
-            
             "image_files": [],
             "extrinsics": [],
             "intrinsics": [],
@@ -162,7 +143,7 @@ class DTU64(Dataset):
             cam_idx = int(file_idx)
 
             # Camera file path
-            cam_file = os.path.join(self.camera_root, f"{cam_idx:0>8}_cam.txt")
+            cam_file = os.path.join(self.da3_clean_root_path, 'dtu64', 'Cameras', f"{cam_idx:0>8}_cam.txt")
 
             if not os.path.exists(cam_file):
                 print(f"[DTU-64] Warning: Camera file not found: {cam_file}")
@@ -173,7 +154,6 @@ class DTU64(Dataset):
             out.image_files.append(rgb_file)
             out.extrinsics.append(extrinsics)
             out.intrinsics.append(intrinsics)
-
 
         out.extrinsics = np.asarray(out.extrinsics, dtype=np.float32)
         out.intrinsics = np.asarray(out.intrinsics, dtype=np.float32)
@@ -206,3 +186,4 @@ class DTU64(Dataset):
             "3D reconstruction (fuse3d) is not supported. "
             "Use the standard 'dtu' dataset for 3D reconstruction."
         )
+

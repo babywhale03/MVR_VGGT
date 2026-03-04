@@ -24,7 +24,6 @@ Evaluation metrics:
 """
 
 import os
-import glob
 from typing import Dict as TDict
 
 import cv2
@@ -40,13 +39,16 @@ from depth_anything_3.bench.utils import (
     fuse_depth_to_tsdf,
     sample_points_from_mesh,
 )
-from depth_anything_3.utils.constants import (
-    DA3_CLEAN_ROOT_PATH,
-    DA3_DEG_ROOT_PATH,
+from depth_anything_3.utils.constants_new import (
+    
+    # PHO
+    DA3_LQ_ROOT_PATH,
+    DA3_RES_ROOT_PATH,
+    
     SEVENSCENES_CX,
     SEVENSCENES_CY,
     SEVENSCENES_DOWN_SAMPLE,
-    # SEVENSCENES_EVAL_DATA_ROOT,
+    SEVENSCENES_EVAL_DATA_ROOT,
     SEVENSCENES_EVAL_THRESHOLD,
     SEVENSCENES_FX,
     SEVENSCENES_FY,
@@ -83,11 +85,12 @@ class SevenScenes(Dataset):
     """
 
 
-    # pho
-    da3_clean_root_path = DA3_CLEAN_ROOT_PATH
-    da3_deg_root_path = DA3_DEG_ROOT_PATH
-    
-    # data_root = SEVENSCENES_EVAL_DATA_ROOT
+    # PHO
+    da3_lq_root = os.path.join(DA3_LQ_ROOT_PATH, '7scenes')
+    da3_res_root = os.path.join(DA3_RES_ROOT_PATH, '7scenes')
+
+
+    data_root = SEVENSCENES_EVAL_DATA_ROOT
     SCENES = SEVENSCENES_SCENES
 
     # Evaluation hyperparameters from constants
@@ -131,15 +134,21 @@ class SevenScenes(Dataset):
 
         # Different sequence for stairs scene
         if scene == "stairs":
-            data_folder = os.path.join(self.da3_clean_root_path, '7scenes', "7Scenes", scene, "seq-02")
-            deg_folder = os.path.join(self.da3_deg_root_path, '7scenes', '7Scenes', scene, "seq-02")
+            data_folder = os.path.join(self.data_root, "7Scenes", scene, "seq-02")
             n_imgs = 500
+            # PHO
+            lq_data_folder = os.path.join(self.da3_lq_root, "7Scenes", scene, "seq-02")
+            res_data_folder = os.path.join(self.da3_res_root, "7Scenes", scene, "seq-02")
+            
         else:
-            data_folder = os.path.join(self.da3_clean_root_path, '7scenes', "7Scenes", scene, "seq-01")
-            deg_folder = os.path.join(self.da3_deg_root_path, '7scenes', '7Scenes', scene, "seq-01")
+            data_folder = os.path.join(self.data_root, "7Scenes", scene, "seq-01")
             n_imgs = 1000
-
-        gt_mesh_path = os.path.join(self.da3_clean_root_path, '7scenes', "7Scenes", "meshes", f"{scene}.ply")
+            # PHO
+            lq_data_folder = os.path.join(self.da3_lq_root, "7Scenes", scene, "seq-01")
+            res_data_folder = os.path.join(self.da3_res_root, "7Scenes", scene, "seq-01")
+            
+            
+        gt_mesh_path = os.path.join(self.data_root, "7Scenes", "meshes", f"{scene}.ply")
 
         # Fixed intrinsics for all images
         ixt = np.array([
@@ -149,6 +158,11 @@ class SevenScenes(Dataset):
         ], dtype=np.float32)
 
         out = Dict({
+
+            # PHO
+            "lq_image_files": [],
+            "res_image_files": [],
+            
             "image_files": [],
             "extrinsics": [],
             "intrinsics": [],
@@ -160,13 +174,21 @@ class SevenScenes(Dataset):
 
         for i in range(0, n_imgs, 1):
             
-            # pho check ext
-            breakpoint()
-            ext = glob.glob(os.path.join(deg_folder, '*color*'))[0]
-            _, ext = os.path.splitext(ext)            
-            img_path = os.path.join(deg_folder, f"frame-{i:06d}.color{ext}")
+            # PHO (LQ)
+            lq_img_path = os.path.join(lq_data_folder, f"frame-{i:06d}.color.jpg")
+            if not os.path.exists(lq_img_path):
+                continue
+            out.lq_image_files.append(lq_img_path)
+            
+            # PHO (RES)
+            res_img_path = os.path.join(res_data_folder, f"frame-{i:06d}.color.png")
+            if not os.path.exists(res_img_path):
+                continue
+            out.res_image_files.append(res_img_path)
+        
+            img_path = os.path.join(data_folder, f"frame-{i:06d}.color.png")
             pose_path = os.path.join(data_folder, f"frame-{i:06d}.pose.txt")
-            depth_path = os.path.join(data_folder,  f"frame-{i:06d}.depth.png")
+            depth_path = os.path.join(data_folder, f"frame-{i:06d}.depth.png")
 
             if not os.path.exists(img_path) or not os.path.exists(pose_path):
                 continue
@@ -179,7 +201,7 @@ class SevenScenes(Dataset):
             out.extrinsics.append(ext)
             out.intrinsics.append(ixt.copy())
             out.aux.gt_depth_files.append(depth_path)
-
+            
         out.extrinsics = np.asarray(out.extrinsics, dtype=np.float32)
         out.intrinsics = np.asarray(out.intrinsics, dtype=np.float32)
 
@@ -460,5 +482,4 @@ class SevenScenes(Dataset):
             depth[invalid_mask] = 0.0
 
         return depth
-
 

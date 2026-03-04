@@ -252,6 +252,7 @@ class Aggregator(nn.Module):
             # breakpoint()
             if change_latent and layer_num == extract_layer_num:
                 tokens = kwargs['vggt_result']['restored_latent'] # [B, 1041, 1024]
+                breakpoint()
                 global_intermediates = [tokens.view(B, S, P, C)]
 
             if change_latent and kwargs['vggt_result'].get('clean_latent') is not None and layer_num == 12:
@@ -266,8 +267,6 @@ class Aggregator(nn.Module):
                 concat_inter = torch.cat([frame_intermediates[i], global_intermediates[i]], dim=-1) # [B, S, P, 2C] = [8, 1, 1041, 2048]
                 output_list.append(concat_inter)
 
-
-                    
         del concat_inter
         del frame_intermediates
         del global_intermediates

@@ -122,4 +122,4 @@ class ode:
             atol=atol,
             rtol=rtol
         )
-        return samples
+        return samples[-1]

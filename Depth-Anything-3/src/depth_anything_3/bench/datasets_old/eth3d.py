@@ -45,11 +45,11 @@ from depth_anything_3.bench.utils import (
     quat2rotmat,
     sample_points_from_mesh,
 )
-from depth_anything_3.utils.constants_new import (
-    DA3_LQ_ROOT_PATH,
-    DA3_RES_ROOT_PATH,
+from depth_anything_3.utils.constants import (
+    DA3_CLEAN_ROOT_PATH,
+    DA3_DEG_ROOT_PATH,
     ETH3D_DOWN_SAMPLE,
-    ETH3D_EVAL_DATA_ROOT,
+    # ETH3D_EVAL_DATA_ROOT,
     ETH3D_EVAL_THRESHOLD,
     ETH3D_FILTER_KEYS,
     ETH3D_MAX_DEPTH,
@@ -82,12 +82,14 @@ class ETH3D(Dataset):
         │   ├── combined_mesh.ply          # Ground truth mesh
         │   └── ground_truth_depth/        # GT depth maps (optional)
     """
+    
+    
+    # pho
+    da3_clean_root_path = DA3_CLEAN_ROOT_PATH
+    da3_deg_root_path = DA3_DEG_ROOT_PATH
+    data_root = os.path.join(DA3_CLEAN_ROOT_PATH, 'eth3d')
 
-    # PHO
-    da3_lq_root = os.path.join(DA3_LQ_ROOT_PATH, 'eth3d')
-    da3_res_root = os.path.join(DA3_RES_ROOT_PATH, 'eth3d')
-
-    data_root = ETH3D_EVAL_DATA_ROOT
+    # data_root = ETH3D_EVAL_DATA_ROOT
     SCENES = ETH3D_SCENES
 
     # Evaluation hyperparameters from constants
@@ -199,12 +201,8 @@ class ETH3D(Dataset):
         if scene in self._scene_cache:
             return self._scene_cache[scene]
 
-
-        # PHO 
-        lq_scene_dir = os.path.join(self.da3_lq_root, scene)
-        res_scene_dir = os.path.join(self.da3_res_root, scene)
-
-        scene_dir = os.path.join(self.data_root, scene)
+        # scene_dir = os.path.join(self.data_root, scene)
+        scene_dir = os.path.join(self.da3_clean_root_path, 'eth3d', scene)
 
         # Parse camera files
         cameras_file = os.path.join(scene_dir, "dslr_calibration_jpg", "cameras.txt")
@@ -216,11 +214,6 @@ class ETH3D(Dataset):
         gt_mesh_path = os.path.join(scene_dir, "combined_mesh.ply")
 
         out = Dict({
-            
-            # PHO
-            "lq_image_files": [],
-            "res_image_files": [],
-            
             "image_files": [],
             "extrinsics": [],
             "intrinsics": [],
@@ -239,30 +232,27 @@ class ETH3D(Dataset):
                 filtered_count += 1
                 continue
 
+            # image_path = os.path.join(scene_dir, "images", image_name)
+            breakpoint()
+            # pho - check ext
+            if DA3_CLEAN_ROOT_PATH == DA3_DEG_ROOT_PATH:
+                ext = glob.glob(os.path.join(self.da3_deg_root_path, 'eth3d', scene, "images", "dslr_images", "*.JPG"))[0]
+            else:
+                ext = glob.glob(os.path.join(self.da3_deg_root_path, 'eth3d', scene, "images", "dslr_images", "*"))[0]
+            _, ext = os.path.splitext(ext)
+            if not image_name.endswith(ext):
+                image_name = image_name.rsplit('.', 1)[0] + ext
 
-            # PHO (LQ)
-            lq_image_path = os.path.join(lq_scene_dir, "images", image_name.replace('.JPG', '.jpg'))
-            if not os.path.exists(lq_image_path):
-                continue
-            out.lq_image_files.append(lq_image_path)
+            image_path = os.path.join(self.da3_deg_root_path, 'eth3d', scene, "images", image_name)
             
-            # PHO (RES)
-            res_image_path = os.path.join(res_scene_dir, "images", image_name.replace('.JPG', '.png'))
-            if not os.path.exists(res_image_path):
-                continue
-            out.res_image_files.append(res_image_path)
-
-            
-            image_path = os.path.join(scene_dir, "images", image_name)
             if not os.path.exists(image_path):
                 continue
-            
 
             cam_info = camera_dict.get(pose_info["camera_id"])
             if cam_info is None:
                 continue
 
-            # Build intrinsics matrix
+            # Build intrinsics matrix, shape:(3,3)
             ixt = np.array([
                 [cam_info["fx"], 0, cam_info["cx"]],
                 [0, cam_info["fy"], cam_info["cy"]],
@@ -271,19 +261,16 @@ class ETH3D(Dataset):
 
             # Build extrinsics matrix (world-to-camera)
             # COLMAP format: world point -> camera point
-            rot = quat2rotmat(pose_info["quat"])
+            rot = quat2rotmat(pose_info["quat"])    # (3,3)
             ext = np.eye(4, dtype=np.float32)
             ext[:3, :3] = rot
-            ext[:3, 3] = pose_info["trans"]
-
+            ext[:3, 3] = pose_info["trans"] # (4,4)
 
             out.image_files.append(image_path)
             out.extrinsics.append(ext)
             out.intrinsics.append(ixt)
             out.aux.heights.append(cam_info["height"])
             out.aux.widths.append(cam_info["width"])
-            
-
 
         out.extrinsics = np.asarray(out.extrinsics, dtype=np.float32)
         out.intrinsics = np.asarray(out.intrinsics, dtype=np.float32)
@@ -312,8 +299,9 @@ class ETH3D(Dataset):
         Returns:
             Dict with metrics: acc, comp, overall, precision, recall, fscore
         """
+        # breakpoint()
         gt_data = self.get_data(scene)
-        gt_mesh_path = gt_data.aux.gt_mesh_path
+        gt_mesh_path = gt_data.aux.gt_mesh_path     # '../da3_ds/workspace/benchmark_dataset/eth3d/courtyard/combined_mesh.ply'
 
         # Load and sample ground truth mesh
         gt_mesh = o3d.io.read_triangle_mesh(gt_mesh_path)
@@ -384,12 +372,18 @@ class ETH3D(Dataset):
         _wait_for_file_ready(result_path)
         pred_data = Dict({k: v for k, v in np.load(result_path).items()})
 
+
+        '''
+            (Pdb) gt_data.keys()    dict_keys(['extrinsics', 'intrinsics', 'image_files'])
+            (Pdb) pred_data.keys()  dict_keys(['depth', 'conf', 'extrinsics', 'intrinsics'])
+        '''
+
         # Load original images (keep original size)
         images = []
         orig_sizes = []  # (H, W) for each image
         for img_path in gt_data.image_files:
-            img = cv2.imread(img_path)
-            img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+            img = cv2.imread(img_path)                      # 4032 6048 3
+            img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)      # 4032 6048 3
             images.append(img)
             orig_sizes.append((img.shape[0], img.shape[1]))
 
@@ -625,3 +619,4 @@ class ETH3D(Dataset):
             depth[invalid_mask] = 0.0
 
         return depth
+

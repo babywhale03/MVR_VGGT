@@ -2,7 +2,7 @@ stage_2:
   model: VGGTMVRM
   target: stage2.models.DDTMVRM_pos_multi.DiTwDDTHead
   save_folder: train_hypersim_tartanair_nearcam__val_eth3d__nearrandom
-  exp_name: test__pose_guidance__deg_first__val30_seed
+  exp_name: test_code
   params:
     input_size: 16
     patch_size: 1
@@ -22,8 +22,9 @@ stage_2:
     use_pos_embed: false
   camera_weight: false
   residual: false
-  pose_guidance: true
-  ckpt: /mnt/dataset1/jaeeun/MVR_vggt/RAE/ckpts/train_hypersim_tartanair_nearcam__val_eth3d__nearrandom/VGGTMVRM__test__deg_first__val30_seed__ckpt7000__g0__kernel100__view4__fp32__ep10__bs-4__lr-2e-04__ema0.9995/checkpoints/step-0042000.pt
+  pose_guidance: false
+  ckpt:
+  # ckpt: /mnt/dataset1/jaeeun/MVR_vggt/RAE/ckpts/train_hypersim_tartanair_nearcam__val_eth3d__nearrandom/VGGTMVRM__test__deg_first__val30_seed__ckpt7000__g0__kernel100__view4__fp32__ep10__bs-4__lr-2e-04__ema0.9995/checkpoints/step-0042000.pt
   # ckpt: /mnt/dataset1/jaeeun/MVR_vggt/RAE/ckpts/train_hypersim_tartanair_nearcam__val_eth3d__nearrandom/VGGTMVRM__test_gf__deg_first__val30_seed__1152,2304__g0__kernel100__view3__fp32__ep10__bs-4__lr-2e-04__ema0.9995/checkpoints/global_step:0014000.pt
   # ckpt: /mnt/dataset1/jaeeun/MVR_vggt/RAE/ckpts/train_hypersim_tartanair_nearcam__val_eth3d__nearrandom/VGGTMVRM__test_gf__deg_first__val30_seed__1152,2304__g0__kernel200__view3__fp32__ep10__bs-4__lr-2e-04__ema0.9995/checkpoints/global_step_0006000.pt
   # ckpt: /mnt/dataset1/jaeeun/MVR_vggt/RAE/ckpts/train_hypersim_tartanair_nearcam__val_eth3d__nearrandom/VGGTMVRM__clean_recon__g0__kernel100__view4__fp32__ep10__bs-4__lr-2e-04__ema0.9995/checkpoints/step-0009000.pt

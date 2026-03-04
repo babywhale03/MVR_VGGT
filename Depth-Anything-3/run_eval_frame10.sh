@@ -17,9 +17,11 @@ do
     echo "Running dataset: $data (frames=${MAX_FRAMES})"
     echo "========================================="
 
-    CUDA_VISIBLE_DEVICES=$DEVICE python -m depth_anything_3.bench.evaluator_vggt \
+    CUDA_VISIBLE_DEVICES=$DEVICE python -m depth_anything_3.bench.evaluator_vggt_new \
         --config "/mnt/dataset1/jaeeun/MVR_vggt/Depth-Anything-3/src/depth_anything_3/bench/configs/eval_bench_10.yaml" \
-        --work_dir "/mnt/dataset1/MV_Restoration/ECCV26_RESULTS/vggt_eval/${EXP_NAME}/${MAX_FRAMES}/${data}/" \
+        --work_dir "/mnt/dataset1/MV_Restoration/ECCV26_RESULTS/vggt_eval_final/${EXP_NAME}/${MAX_FRAMES}/${data}/" \
         --clean_root_path "/mnt/dataset1/MV_Restoration/da3_benchmark_dataset/clean" \
-        --deg_root_path "/mnt/dataset1/MV_Restoration/da3_benchmark_dataset/${data}"
+        --lq_root_path "/mnt/dataset1/MV_Restoration/da3_benchmark_dataset/${data}" \
+        --res_root_path "/mnt/dataset1/MV_Restoration/da3_benchmark_dataset/${EXP_NAME}/${data}" \
+        --max_frames $MAX_FRAMES
 done

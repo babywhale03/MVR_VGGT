@@ -6,7 +6,7 @@
 # See depth_anything_3.cfg for config utility functions.
 
 stage_2:
-  model: VGGT_HQ
+  model: VGGTMVRM
   target: RAE.src.stage2.models.DDTMVRM_pos_multi.DiTwDDTHead
   params:
     input_size: 16
@@ -25,7 +25,7 @@ stage_2:
     wo_shift: false
     use_pos_embed: false
   extract_layer: 3
-  ckpt:
+  ckpt: /media/data1/MV_Restoration/JIHYE2_CKPT/kernel100_14000.pt
 
 transport:
   params:
@@ -48,7 +48,7 @@ misc:
   num_classes: 0
   # time_dist_shift_dim: 1065984 # 1041*1024
   time_dist_shift_base: 4096
-    
+  
 # ==============================================================================
 # Model Configuration
 # ==============================================================================
@@ -56,6 +56,20 @@ model:
   # Path to model checkpoint or HuggingFace model ID
   path: facebook/VGGT-1B
   # path: depth-anything/DA3-GIANT-1.1
+
+# ==============================================================================
+# Workspace Configuration
+# ==============================================================================
+workspace:
+  # Working directory for outputs (model results, metrics, etc.)
+  work_dir: /mnt/dataset1/MV_Restoration/ECCV26_RESULTS/VGGT/wo_mvrm/clean
+
+# ==============================================================================
+# Dataset Configuration
+# ==============================================================================
+dataset:
+  clean_root_path: /mnt/dataset1/MV_Restoration/da3_benchmark_dataset/clean
+  deg_root_path: /mnt/dataset1/MV_Restoration/da3_benchmark_dataset/cam_blur_300
 
 # ==============================================================================
 # Evaluation Configuration
@@ -76,7 +90,8 @@ eval:
   modes:
     - pose
     - recon_unposed
-    # - recon_posed
+    - recon_posed
+    - depth
 
   # Reference view selection strategy for inference
   # Options: first, saddle_balanced, auto, mid
@@ -89,10 +104,10 @@ eval:
   # Maximum number of frames per scene (for sampling)
   # If a scene has more frames, randomly sample to this limit.
   # Set to -1 to disable sampling.
-  max_frames: 100
+  max_frames: 30
 
   # Only run evaluation (skip inference)
-  eval_only: tru
+  eval_only: false
 
   # Only print saved metrics (skip inference and evaluation)
   print_only: false

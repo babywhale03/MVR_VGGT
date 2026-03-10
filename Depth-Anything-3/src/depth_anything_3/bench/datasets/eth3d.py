@@ -572,7 +572,7 @@ class ETH3D(Dataset):
             gt_depth = np.ones((h, w), dtype=np.float32)
 
         # Load GT mask
-        if os.path.exists(gt_mask_path):
+        if os.path.exists(gt_mask_path): 
             gt_mask = cv2.imread(gt_mask_path, cv2.IMREAD_GRAYSCALE)
             gt_mask = np.asarray(gt_mask)
         else:
@@ -583,7 +583,7 @@ class ETH3D(Dataset):
         invalid_mask_from_gt = gt_mask == 1
         gt_depth_copy = gt_depth.copy()
         gt_depth_copy[gt_mask == 1] = 0
-
+        
         invalid_mask_from_gt_depth = np.logical_or(gt_depth_copy == 0, gt_depth_copy == np.inf)
 
         # zero_mask: valid region that should be kept

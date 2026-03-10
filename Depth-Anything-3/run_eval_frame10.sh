@@ -2,9 +2,9 @@
 export PYTHONPATH=$PWD
 export PATH="$CONDA_PREFIX/bin:$PATH"
 export PYTHONBREAKPOINT=0
-DEVICE=0
-DATASETS=("cam_blur_50" "cam_blur_100" "cam_blur_300" "cam_blur_500")
-EXP_NAME="VGGTMVRM__ddp2__val30_seed__g3__kernel100__view4__fp32__ep10__bs-8__lr-2e-04__ema0.9995"
+DEVICE=1
+DATASETS=("filtered_cam_blur_50" "filtered_cam_blur_100" "filtered_cam_blur_300")
+EXP_NAME="JIHYE_kernel100_step123025"
 
 ########################################
 # MAX_FRAMES = 10

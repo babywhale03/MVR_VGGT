@@ -425,7 +425,7 @@ def main():
     breakpoint()
     rank, world_size, device = setup_distributed()
     
-    eval_dir = os.path.join(args.results_dir, f"{Path(args.ckpt).stem}_full_kernel{args.kernel_size}_view{args.num_views}")
+    eval_dir = os.path.join(args.results_dir, f"{Path(args.ckpt).stem}_full_kernel{args.kernel_size}_view{args.num_views}_abl_g3")
     logger = setup_eval_logger(eval_dir)
     
     full_cfg = OmegaConf.load(args.config)
@@ -463,6 +463,10 @@ def main():
     metrics_accum = defaultdict(float)
     all_r_errors, all_t_errors = [], []
     lq_all_r_errors, lq_all_t_errors = [], []
+    lq_cam_all_r_errors, lq_cam_all_t_errors = [], []
+    clean_cam_all_r_errors, clean_cam_all_t_errors = [], []
+    lq_patch_all_r_errors, lq_patch_all_t_errors = [], []
+    clean_patch_all_r_errors, clean_patch_all_t_errors = [], []
 
     total_frames = 0
 
@@ -491,35 +495,48 @@ def main():
                 xt = torch.randn_like(lq_latent) + lq_latent
                 restored_latent = eval_sampler(xt, model.forward, img=deg_img).float()
                 # restored_latent = torch.cat([clean_latent[:, :, :5, :], restored_latent[:, :, 5:, :]], dim=2)
-                # lq_cam_restored_latent = torch.cat([lq_latent[:, :, :5, :], restored_latent[:, :, 5:, :]], dim=2)
-                # clean_cam_restored_latent = torch.cat([clean_latent[:, :, :5, :], restored_latent[:, :, 5:, :]], dim=2)
+                lq_cam_restored_latent = torch.cat([lq_latent[:, :, :5, :], restored_latent[:, :, 5:, :]], dim=2)
+                clean_cam_restored_latent = torch.cat([clean_latent[:, :, :5, :], restored_latent[:, :, 5:, :]], dim=2)
+                lq_patch_restored_latent = torch.cat([restored_latent[:, :, :5, :], lq_latent[:, :, 5:, :]], dim=2)
+                clean_patch_restored_latent = torch.cat([restored_latent[:, :, :5, :], clean_latent[:, :, 5:, :]], dim=2)
             
                 res_out = vggt_model(deg_img, extract_layer_num=args.extract_layer, vggt_result={'restored_latent': restored_latent}, change_latent=True)
+                lq_cam_res_out = vggt_model(deg_img, extract_layer_num=args.extract_layer, vggt_result={'restored_latent': lq_cam_restored_latent}, change_latent=True)
+                clean_cam_res_out = vggt_model(deg_img, extract_layer_num=args.extract_layer, vggt_result={'restored_latent': clean_cam_restored_latent}, change_latent=True)
+                lq_patch_res_out = vggt_model(deg_img, extract_layer_num=args.extract_layer, vggt_result={'restored_latent': lq_patch_restored_latent}, change_latent=True)
+                clean_patch_res_out = vggt_model(deg_img, extract_layer_num=args.extract_layer, vggt_result={'restored_latent': clean_patch_restored_latent}, change_latent=True)
                 # res_out = vggt_model(deg_img, extract_layer_num=3, vggt_result={'restored_latent': restored_latent, 'clean_latent': change_latent}, change_latent=True)  
                 # lq_cam_res_out = vggt_model(deg_img, extract_layer_num=3, vggt_result={'restored_latent': lq_cam_restored_latent}, change_latent=True)
                 # clean_cam_res_out = vggt_model(deg_img, extract_layer_num=3, vggt_result={'restored_latent': clean_cam_restored_latent}, change_latent=True)
 
                 res_out_tokens = res_out["aggregated_tokens_list"]
-                # lq_cam_res_out_tokens = lq_cam_res_out["aggregated_tokens_list"]
-                # clean_cam_res_out_tokens = clean_cam_res_out["aggregated_tokens_list"]
+                lq_cam_res_out_tokens = lq_cam_res_out["aggregated_tokens_list"]
+                clean_cam_res_out_tokens = clean_cam_res_out["aggregated_tokens_list"]
+                lq_patch_res_out_tokens = lq_patch_res_out["aggregated_tokens_list"]
+                clean_patch_res_out_tokens = clean_patch_res_out["aggregated_tokens_list"]
 
                 if "feature_sim" in args.eval_mode or "full" in args.eval_mode:
                     visualize_vggt_stepwise_analysis(clean_tokens, lq_tokens, res_out_tokens, save_path=os.path.join(vis_feature_sim, f"sim_step_{i}.png"))
-                    # visualize_token_similarity(clean_tokens, res_out_tokens, save_path=os.path.join(vis_feature_sim, f"sim_lq_step_{i}.png"))
-                    # visualize_token_similarity(lq_tokens, res_out_tokens, save_path=os.path.join(vis_feature_sim, f"sim_lq_step_{i}.png"))
-                    # visualize_token_similarity(clean_tokens, lq_tokens, save_path=os.path.join(vis_feature_sim, f"sim_clean_lq_step_{i}.png"))
-                    # visualize_token_similarity(clean_tokens, clean_cam_res_out_tokens, save_path=os.path.join(vis_feature_sim, f"sim_clean_cam_step_{i}.png"))
-                    # visualize_token_similarity(lq_tokens, lq_cam_res_out_tokens, save_path=os.path.join(vis_feature_sim, f"sim_lq_cam_step_{i}.png"))
+                    visualize_vggt_stepwise_analysis(clean_tokens, lq_tokens, lq_cam_res_out_tokens, save_path=os.path.join(vis_feature_sim, f"sim_lq_cam_step_{i}.png"))
+                    visualize_vggt_stepwise_analysis(clean_tokens, lq_tokens, clean_cam_res_out_tokens, save_path=os.path.join(vis_feature_sim, f"sim_clean_cam_step_{i}.png"))
+                    visualize_vggt_stepwise_analysis(clean_tokens, lq_tokens, lq_patch_res_out_tokens, save_path=os.path.join(vis_feature_sim, f"sim_lq_patch_step_{i}.png"))
+                    visualize_vggt_stepwise_analysis(clean_tokens, lq_tokens, clean_patch_res_out_tokens, save_path=os.path.join(vis_feature_sim, f"sim_clean_patch_step_{i}.png"))
                 print(f"Shape lq_latent: {lq_latent.shape}, res_latent: {restored_latent.shape}, clean_latent: {clean_latent.shape}")
             save_image(create_eval_grid(batch, lq_out, res_out), os.path.join(vis_depth_dir, f"depth_{i:03d}.png"), normalize=False)
+            save_image(create_eval_grid(batch, lq_out, lq_cam_res_out), os.path.join(vis_depth_dir, f"depth_lq_cam_{i:03d}.png"), normalize=False)
+            save_image(create_eval_grid(batch, lq_out, clean_cam_res_out), os.path.join(vis_depth_dir, f"depth_clean_cam_{i:03d}.png"), normalize=False)
+            save_image(create_eval_grid(batch, lq_out, lq_patch_res_out), os.path.join(vis_depth_dir, f"depth_lq_patch_{i:03d}.png"), normalize=False)
+            save_image(create_eval_grid(batch, lq_out, clean_patch_res_out), os.path.join(vis_depth_dir, f"depth_clean_patch_{i:03d}.png"), normalize=False)
 
             if "pose_vis" in args.eval_mode or "full" in args.eval_mode:
                 v_metrics_accum = defaultdict(float)
                 for v in range(deg_img.shape[1]):
                     d_m = compute_depth_metrics(batch["gt_depth"][0, v, 0], res_out["depth"][0, v].squeeze(-1).cpu())
                     lq_d_m = compute_depth_metrics(batch["gt_depth"][0, v, 0], lq_out["depth"][0, v].squeeze(-1).cpu())
-                    # lq_cam_d_m = compute_depth_metrics(batch["gt_depth"][0, v, 0], lq_cam_res_out["depth"][0, v].squeeze(-1).cpu())
-                    # hq_cam_d_m = compute_depth_metrics(batch["gt_depth"][0, v, 0], clean_cam_res_out["depth"][0, v].squeeze(-1).cpu())
+                    lq_cam_d_m = compute_depth_metrics(batch["gt_depth"][0, v, 0], lq_cam_res_out["depth"][0, v].squeeze(-1).cpu())
+                    clean_cam_d_m = compute_depth_metrics(batch["gt_depth"][0, v, 0], clean_cam_res_out["depth"][0, v].squeeze(-1).cpu())
+                    lq_patch_d_m = compute_depth_metrics(batch["gt_depth"][0, v, 0], lq_patch_res_out["depth"][0, v].squeeze(-1).cpu())
+                    clean_patch_d_m = compute_depth_metrics(batch["gt_depth"][0, v, 0], clean_patch_res_out["depth"][0, v].squeeze(-1).cpu())
 
                     if d_m:
                         for k, val in d_m.items(): metrics_accum[f"depth_{k}"] += val
@@ -528,10 +545,18 @@ def main():
                     if lq_d_m:
                         for k, val in lq_d_m.items(): metrics_accum[f"lq_depth_{k}"] += val
                         for k, val in lq_d_m.items(): v_metrics_accum[f"lq_depth_{k}"] += val
-                    # if lq_cam_d_m:
-                    #     for k, val in lq_cam_d_m.items(): metrics_accum[f"lq_cam_depth_{k}"] += val
-                    # if hq_cam_d_m:
-                    #     for k, val in hq_cam_d_m.items(): metrics_accum[f"hq_cam_depth_{k}"] += val
+                    if lq_cam_d_m:
+                        for k, val in lq_cam_d_m.items(): metrics_accum[f"lq_cam_depth_{k}"] += val
+                        for k, val in lq_cam_d_m.items(): v_metrics_accum[f"lq_cam_depth_{k}"] += val
+                    if clean_cam_d_m:
+                        for k, val in clean_cam_d_m.items(): metrics_accum[f"clean_cam_depth_{k}"] += val
+                        for k, val in clean_cam_d_m.items(): v_metrics_accum[f"clean_cam_depth_{k}"] += val
+                    if lq_patch_d_m:
+                        for k, val in lq_patch_d_m.items(): metrics_accum[f"lq_patch_depth_{k}"] += val
+                        for k, val in lq_patch_d_m.items(): v_metrics_accum[f"lq_patch_depth_{k}"] += val
+                    if clean_patch_d_m:
+                        for k, val in clean_patch_d_m.items(): metrics_accum[f"clean_patch_depth_{k}"] += val
+                        for k, val in clean_patch_d_m.items(): v_metrics_accum[f"clean_patch_depth_{k}"] += val
 
                 with open(os.path.join(vis_depth_metric, f"depth_metrics_{i:03d}.txt"), "w") as f:
                     for k, v in v_metrics_accum.items():
@@ -554,6 +579,10 @@ def main():
                 # v_lq_cam_res_se3 = enc_to_se3(lq_cam_res_out["pose_enc"], deg_img.shape[-2:])
                 # v_hq_cam_res_se3 = enc_to_se3(clean_cam_res_out["pose_enc"], deg_img.shape[-2:])
                 v_lq_se3 = enc_to_se3(lq_out["pose_enc"], deg_img.shape[-2:])
+                v_lq_cam_res_se3 = enc_to_se3(lq_cam_res_out["pose_enc"], deg_img.shape[-2:])
+                v_clean_cam_res_se3 = enc_to_se3(clean_cam_res_out["pose_enc"], deg_img.shape[-2:])
+                v_lq_patch_res_se3 = enc_to_se3(lq_patch_res_out["pose_enc"], deg_img.shape[-2:])
+                v_clean_patch_res_se3 = enc_to_se3(clean_patch_res_out["pose_enc"], deg_img.shape[-2:])
 
                 # gt_se3_rel = align_to_first(v_gt_se3)
                 # res_se3_rel = align_to_first(v_res_se3)
@@ -565,27 +594,40 @@ def main():
                 gt_c = extrinsic_to_cam_center(v_gt_se3).cpu().numpy()  
                 res_c = extrinsic_to_cam_center(v_res_se3).cpu().numpy()
                 lq_c = extrinsic_to_cam_center(v_lq_se3).cpu().numpy()
-                # lq_cam_c = extrinsic_to_cam_center(v_lq_cam_res_se3).cpu().numpy()
-                # hq_cam_c = extrinsic_to_cam_center(v_hq_cam_res_se3).cpu().numpy()
+                lq_cam_c = extrinsic_to_cam_center(v_lq_cam_res_se3).cpu().numpy()
+                clean_cam_c = extrinsic_to_cam_center(v_clean_cam_res_se3).cpu().numpy()
+                lq_patch_c = extrinsic_to_cam_center(v_lq_patch_res_se3).cpu().numpy()
+                clean_patch_c = extrinsic_to_cam_center(v_clean_patch_res_se3).cpu().numpy()
 
                 res_c = sim3_align(res_c, gt_c)
                 lq_c = sim3_align(lq_c, gt_c)
-                # lq_cam_c = sim3_align(lq_cam_c, gt_c)
+                lq_cam_c = sim3_align(lq_cam_c, gt_c)
+                clean_cam_c = sim3_align(clean_cam_c, gt_c)
+                lq_patch_c = sim3_align(lq_patch_c, gt_c)
+                clean_patch_c = sim3_align(clean_patch_c, gt_c)
                 # hq_cam_c = sim3_align(hq_cam_c, gt_c)
 
                 r_err, t_err = se3_to_relative_pose_error(v_res_se3, v_gt_se3, v_res_se3.shape[-3])
                 # lq_cam_r_err, lq_cam_t_err = se3_to_relative_pose_error(v_lq_cam_res_se3, v_gt_se3, v_lq_cam_res_se3.shape[-3])
                 # hq_cam_r_err, hq_cam_t_err = se3_to_relative_pose_error(v_hq_cam_res_se3, v_gt_se3, v_hq_cam_res_se3.shape[-3])
                 lq_r_err, lq_t_err = se3_to_relative_pose_error(v_lq_se3, v_gt_se3, v_lq_se3.shape[-3])
+                lq_cam_r_err, lq_cam_t_err = se3_to_relative_pose_error(v_lq_cam_res_se3, v_gt_se3, v_lq_cam_res_se3.shape[-3])
+                clean_cam_r_err, clean_cam_t_err = se3_to_relative_pose_error(v_clean_cam_res_se3, v_gt_se3, v_clean_cam_res_se3.shape[-3])
+                lq_patch_r_err, lq_patch_t_err = se3_to_relative_pose_error(v_lq_patch_res_se3, v_gt_se3, v_lq_patch_res_se3.shape[-3])
+                clean_patch_r_err, clean_patch_t_err = se3_to_relative_pose_error(v_clean_patch_res_se3, v_gt_se3, v_clean_patch_res_se3.shape[-3])
 
                 r_err_np = r_err.cpu().numpy()
                 t_err_np = t_err.cpu().numpy()
                 lq_r_err_np = lq_r_err.cpu().numpy()
                 lq_t_err_np = lq_t_err.cpu().numpy()
-                # lq_cam_r_err_np = lq_cam_r_err.cpu().numpy()
-                # lq_cam_t_err_np = lq_cam_t_err.cpu().numpy()
-                # hq_cam_r_err_np = hq_cam_r_err.cpu().numpy()
-                # hq_cam_t_err_np = hq_cam_t_err.cpu().numpy()
+                lq_cam_r_err_np = lq_cam_r_err.cpu().numpy()
+                lq_cam_t_err_np = lq_cam_t_err.cpu().numpy()
+                clean_cam_r_err_np = clean_cam_r_err.cpu().numpy()
+                clean_cam_t_err_np = clean_cam_t_err.cpu().numpy()
+                lq_patch_r_err_np = lq_patch_r_err.cpu().numpy()
+                lq_patch_t_err_np = lq_patch_t_err.cpu().numpy()
+                clean_patch_r_err_np = clean_patch_r_err.cpu().numpy()
+                clean_patch_t_err_np = clean_patch_t_err.cpu().numpy()
                 
                 pose_metrics = {
                     "auc30": calculate_auc_np(r_err_np, t_err_np, 30),
@@ -596,6 +638,22 @@ def main():
                     "lq_auc15": calculate_auc_np(lq_r_err_np, lq_t_err_np, 15),
                     "lq_auc05": calculate_auc_np(lq_r_err_np, lq_t_err_np, 5),
                     "lq_auc03": calculate_auc_np(lq_r_err_np, lq_t_err_np, 3),
+                    "lq_cam_auc30": calculate_auc_np(lq_cam_r_err_np, lq_cam_t_err_np, 30),
+                    "lq_cam_auc15": calculate_auc_np(lq_cam_r_err_np, lq_cam_t_err_np, 15),
+                    "lq_cam_auc05": calculate_auc_np(lq_cam_r_err_np, lq_cam_t_err_np, 5),
+                    "lq_cam_auc03": calculate_auc_np(lq_cam_r_err_np, lq_cam_t_err_np, 3),
+                    "clean_cam_auc30": calculate_auc_np(clean_cam_r_err_np, clean_cam_t_err_np, 30),
+                    "clean_cam_auc15": calculate_auc_np(clean_cam_r_err_np, clean_cam_t_err_np, 15),
+                    "clean_cam_auc05": calculate_auc_np(clean_cam_r_err_np, clean_cam_t_err_np, 5),
+                    "clean_cam_auc03": calculate_auc_np(clean_cam_r_err_np, clean_cam_t_err_np, 3),
+                    "lq_patch_auc30": calculate_auc_np(lq_patch_r_err_np, lq_patch_t_err_np, 30),
+                    "lq_patch_auc15": calculate_auc_np(lq_patch_r_err_np, lq_patch_t_err_np, 15),
+                    "lq_patch_auc05": calculate_auc_np(lq_patch_r_err_np, lq_patch_t_err_np, 5),
+                    "lq_patch_auc03": calculate_auc_np(lq_patch_r_err_np, lq_patch_t_err_np, 3),
+                    "clean_patch_auc30": calculate_auc_np(clean_patch_r_err_np, clean_patch_t_err_np, 30),
+                    "clean_patch_auc15": calculate_auc_np(clean_patch_r_err_np, clean_patch_t_err_np, 15),
+                    "clean_patch_auc05": calculate_auc_np(clean_patch_r_err_np, clean_patch_t_err_np, 5),
+                    "clean_patch_auc03": calculate_auc_np(clean_patch_r_err_np, clean_patch_t_err_np, 3),
                 }
 
                 with open(os.path.join(vis_pose_metric, f"pose_metrics_{i:03d}.txt"), "w") as f:
@@ -609,33 +667,56 @@ def main():
                 if not np.isnan(lq_r_err_np).any() and not np.isnan(lq_t_err_np).any():
                     lq_all_r_errors.extend(lq_r_err_np)
                     lq_all_t_errors.extend(lq_t_err_np)
-                    
-                # if not np.isnan(lq_cam_r_err_np).any() and not np.isnan(lq_cam_t_err_np).any():
-                #     lq_cam_all_r_errors.extend(lq_cam_r_err_np)
-                #     lq_cam_all_t_errors.extend(lq_cam_t_err_np)
 
-                # if not np.isnan(hq_cam_r_err_np).any() and not np.isnan(hq_cam_t_err_np).any():
-                #     hq_cam_all_r_errors.extend(hq_cam_r_err_np)
-                #     hq_cam_all_t_errors.extend(hq_cam_t_err_np)
+                if not np.isnan(clean_cam_r_err_np).any() and not np.isnan(clean_cam_t_err_np).any():
+                    clean_cam_all_r_errors.extend(clean_cam_r_err_np)
+                    clean_cam_all_t_errors.extend(clean_cam_t_err_np)
+
+                if not np.isnan(lq_cam_r_err_np).any() and not np.isnan(lq_cam_t_err_np).any():
+                    lq_cam_all_r_errors.extend(lq_cam_r_err_np)
+                    lq_cam_all_t_errors.extend(lq_cam_t_err_np)
+
+                if not np.isnan(lq_patch_r_err_np).any() and not np.isnan(lq_patch_t_err_np).any():
+                    lq_patch_all_r_errors.extend(lq_patch_r_err_np)
+                    lq_patch_all_t_errors.extend(lq_patch_t_err_np)
+
+                if not np.isnan(clean_patch_r_err_np).any() and not np.isnan(clean_patch_t_err_np).any():
+                    clean_patch_all_r_errors.extend(clean_patch_r_err_np)
+                    clean_patch_all_t_errors.extend(clean_patch_t_err_np)
 
                 metrics_accum["pose_R_err"] += r_err.mean().item()
                 metrics_accum["pose_T_err"] += t_err.mean().item()  
                 metrics_accum["lq_pose_R_err"] += lq_r_err.mean().item()
                 metrics_accum["lq_pose_T_err"] += lq_t_err.mean().item()
-                # metrics_accum["lq_cam_pose_R_err"] += lq_cam_r_err.mean().item()
-                # metrics_accum["lq_cam_pose_T_err"] += lq_cam_t_err.mean().item()
-                # metrics_accum["hq_cam_pose_R_err"] += hq_cam_r_err.mean().item()
-                # metrics_accum["hq_cam_pose_T_err"] += hq_cam_t_err.mean().item()
+                metrics_accum["lq_cam_pose_R_err"] += lq_cam_r_err.mean().item()
+                metrics_accum["lq_cam_pose_T_err"] += lq_cam_t_err.mean().item()
+                metrics_accum["clean_cam_pose_R_err"] += clean_cam_r_err.mean().item()
+                metrics_accum["clean_cam_pose_T_err"] += clean_cam_t_err.mean().item()
+                metrics_accum["lq_patch_pose_R_err"] += lq_patch_r_err.mean().item()
+                metrics_accum["lq_patch_pose_T_err"] += lq_patch_t_err.mean().item()
+                metrics_accum["clean_patch_pose_R_err"] += clean_patch_r_err.mean().item()
+                metrics_accum["clean_patch_pose_T_err"] += clean_patch_t_err.mean().item()
 
                 plot_cam_trajectory_all(
                     gt_c, res_c, lq_c,
                     save_path=os.path.join(vis_pose_dir, f"traj_{i:03d}.png")
                 )
-                # plot_cam_trajectory(gt_c, res_c, lq_c, os.path.join(vis_pose_dir, f"traj_{i:03d}.png"))
-                # plot_cam_trajectory(gt_c, res_c, lq_c, os.path.join(vis_pose_dir, f"traj_only_pred_{i:03d}.png"), only_pred=True)
-                # save_image(create_eval_grid(batch, lq_out, res_out), os.path.join(vis_depth_dir, f"depth_{i:03d}.png"), normalize=False)
-
-            
+                plot_cam_trajectory_all(
+                    gt_c, res_c, lq_cam_c,
+                    save_path=os.path.join(vis_pose_dir, f"traj_lq_cam_{i:03d}.png")
+                )
+                plot_cam_trajectory_all(
+                    gt_c, res_c, clean_cam_c,
+                    save_path=os.path.join(vis_pose_dir, f"traj_clean_cam_{i:03d}.png")
+                )
+                plot_cam_trajectory_all(
+                    gt_c, res_c, lq_patch_c,
+                    save_path=os.path.join(vis_pose_dir, f"traj_lq_patch_{i:03d}.png")
+                )
+                plot_cam_trajectory_all(
+                    gt_c, res_c, clean_patch_c,
+                    save_path=os.path.join(vis_pose_dir, f"traj_clean_patch_{i:03d}.png")
+                )
             
         if "metric" in args.eval_mode or "full" in args.eval_mode:
             logger.info("\n" + "="*30 + " FINAL EVALUATION RESULTS " + "="*30)
@@ -655,36 +736,58 @@ def main():
                 lq_auc05 = calculate_auc_np(lq_r_err_np, lq_t_err_np, 5)
                 lq_auc03 = calculate_auc_np(lq_r_err_np, lq_t_err_np, 3)
 
-                # lq_cam_r_err_np = np.array(lq_cam_all_r_errors)
-                # lq_cam_t_err_np = np.array(lq_cam_all_t_errors)
-                # lq_cam_auc30 = calculate_auc_np(lq_cam_r_err_np, lq_cam_t_err_np, 30)
-                # lq_cam_auc15 = calculate_auc_np(lq_cam_r_err_np, lq_cam_t_err_np, 15)
-                # lq_cam_auc05 = calculate_auc_np(lq_cam_r_err_np, lq_cam_t_err_np, 5)
-                # lq_cam_auc03 = calculate_auc_np(lq_cam_r_err_np, lq_cam_t_err_np, 3)   
+                lq_cam_r_err_np = np.array(lq_cam_all_r_errors)
+                lq_cam_t_err_np = np.array(lq_cam_all_t_errors)
+                lq_cam_auc30 = calculate_auc_np(lq_cam_r_err_np, lq_cam_t_err_np, 30)
+                lq_cam_auc15 = calculate_auc_np(lq_cam_r_err_np, lq_cam_t_err_np, 15)
+                lq_cam_auc05 = calculate_auc_np(lq_cam_r_err_np, lq_cam_t_err_np, 5)
+                lq_cam_auc03 = calculate_auc_np(lq_cam_r_err_np, lq_cam_t_err_np, 3)   
 
-                # hq_cam_r_err_np = np.array(hq_cam_all_r_errors)
-                # hq_cam_t_err_np = np.array(hq_cam_all_t_errors)
-                # hq_cam_auc30 = calculate_auc_np(hq_cam_r_err_np, hq_cam_t_err_np, 30)
-                # hq_cam_auc15 = calculate_auc_np(hq_cam_r_err_np, hq_cam_t_err_np, 15)
-                # hq_cam_auc05 = calculate_auc_np(hq_cam_r_err_np, hq_cam_t_err_np, 5)
-                # hq_cam_auc03 = calculate_auc_np(hq_cam_r_err_np, hq_cam_t_err_np, 3)
+                clean_cam_r_err_np = np.array(clean_cam_all_r_errors)
+                clean_cam_t_err_np = np.array(clean_cam_all_t_errors)
+                clean_cam_auc30 = calculate_auc_np(clean_cam_r_err_np, clean_cam_t_err_np, 30)
+                clean_cam_auc15 = calculate_auc_np(clean_cam_r_err_np, clean_cam_t_err_np, 15)
+                clean_cam_auc05 = calculate_auc_np(clean_cam_r_err_np, clean_cam_t_err_np, 5)
+                clean_cam_auc03 = calculate_auc_np(clean_cam_r_err_np, clean_cam_t_err_np, 3)
+
+                lq_patch_r_err_np = np.array(lq_patch_all_r_errors)
+                lq_patch_t_err_np = np.array(lq_patch_all_t_errors)
+                lq_patch_auc30 = calculate_auc_np(lq_patch_r_err_np, lq_patch_t_err_np, 30)
+                lq_patch_auc15 = calculate_auc_np(lq_patch_r_err_np, lq_patch_t_err_np, 15)
+                lq_patch_auc05 = calculate_auc_np(lq_patch_r_err_np, lq_patch_t_err_np, 5)
+                lq_patch_auc03 = calculate_auc_np(lq_patch_r_err_np, lq_patch_t_err_np, 3)
+
+                clean_patch_r_err_np = np.array(clean_patch_all_r_errors)
+                clean_patch_t_err_np = np.array(clean_patch_all_t_errors)
+                clean_patch_auc30 = calculate_auc_np(clean_patch_r_err_np, clean_patch_t_err_np, 30)
+                clean_patch_auc15 = calculate_auc_np(clean_patch_r_err_np, clean_patch_t_err_np, 15)
+                clean_patch_auc05 = calculate_auc_np(clean_patch_r_err_np, clean_patch_t_err_np, 5)
+                clean_patch_auc03 = calculate_auc_np(clean_patch_r_err_np, clean_patch_t_err_np, 3)
                 
                 logger.info(f"{'pose_AUC30':<20}: {auc30:.6f}")
                 logger.info(f"{'pose_AUC15':<20}: {auc15:.6f}")
                 logger.info(f"{'pose_AUC05':<20}: {auc05:.6f}")
                 logger.info(f"{'pose_AUC03':<20}: {auc03:.6f}")
-                # logger.info(f"{'lq_cam_pose_AUC30':<20}: {lq_cam_auc30:.6f}")
-                # logger.info(f"{'lq_cam_pose_AUC15':<20}: {lq_cam_auc15:.6f}")
-                # logger.info(f"{'lq_cam_pose_AUC05':<20}: {lq_cam_auc05:.6f}")
-                # logger.info(f"{'lq_cam_pose_AUC03':<20}: {lq_cam_auc03:.6f}")
-                # logger.info(f"{'hq_cam_pose_AUC30':<20}: {hq_cam_auc30:.6f}")
-                # logger.info(f"{'hq_cam_pose_AUC15':<20}: {hq_cam_auc15:.6f}")
-                # logger.info(f"{'hq_cam_pose_AUC05':<20}: {hq_cam_auc05:.6f}")
-                # logger.info(f"{'hq_cam_pose_AUC03':<20}: {hq_cam_auc03:.6f}")
                 logger.info(f"{'lq_pose_AUC30':<20}: {lq_auc30:.6f}")
                 logger.info(f"{'lq_pose_AUC15':<20}: {lq_auc15:.6f}")
                 logger.info(f"{'lq_pose_AUC05':<20}: {lq_auc05:.6f}")
                 logger.info(f"{'lq_pose_AUC03':<20}: {lq_auc03:.6f}")
+                logger.info(f"{'lq_cam_pose_AUC30':<20}: {lq_cam_auc30:.6f}")
+                logger.info(f"{'lq_cam_pose_AUC15':<20}: {lq_cam_auc15:.6f}")
+                logger.info(f"{'lq_cam_pose_AUC05':<20}: {lq_cam_auc05:.6f}")
+                logger.info(f"{'lq_cam_pose_AUC03':<20}: {lq_cam_auc03:.6f}")
+                logger.info(f"{'clean_cam_pose_AUC30':<20}: {clean_cam_auc30:.6f}")
+                logger.info(f"{'clean_cam_pose_AUC15':<20}: {clean_cam_auc15:.6f}")
+                logger.info(f"{'clean_cam_pose_AUC05':<20}: {clean_cam_auc05:.6f}")
+                logger.info(f"{'clean_cam_pose_AUC03':<20}: {clean_cam_auc03:.6f}")
+                logger.info(f"{'lq_patch_pose_AUC30':<20}: {lq_patch_auc30:.6f}")
+                logger.info(f"{'lq_patch_pose_AUC15':<20}: {lq_patch_auc15:.6f}")
+                logger.info(f"{'lq_patch_pose_AUC05':<20}: {lq_patch_auc05:.6f}")
+                logger.info(f"{'lq_patch_pose_AUC03':<20}: {lq_patch_auc03:.6f}")
+                logger.info(f"{'clean_patch_pose_AUC30':<20}: {clean_patch_auc30:.6f}")
+                logger.info(f"{'clean_patch_pose_AUC15':<20}: {clean_patch_auc15:.6f}")
+                logger.info(f"{'clean_patch_pose_AUC05':<20}: {clean_patch_auc05:.6f}")
+                logger.info(f"{'clean_patch_pose_AUC03':<20}: {clean_patch_auc03:.6f}")
 
             if total_frames > 0:
                 num_seq = min(args.num_sequences, len(val_loader))

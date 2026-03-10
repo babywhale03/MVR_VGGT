@@ -116,6 +116,11 @@ def vis_depth_all(hq_img, hq_depth, lq_img, lq_depth, res_img=None, res_depth=No
         res_depth_vis = to_rgb_tensor(res_depth, is_depth=True)
     
     nrow = 5
+    if res_depth is not None:
+        nrow = 7
+    if res_depth is not None and res_img is not None:
+        nrow = 8
+
     combined = []
     for i in range(V):
         combined.append(to_rgb_tensor(hq_img[i:i+1]))
@@ -123,13 +128,12 @@ def vis_depth_all(hq_img, hq_depth, lq_img, lq_depth, res_img=None, res_depth=No
         combined.append(to_rgb_tensor(lq_img[i:i+1]))
         combined.append(lq_depth_vis[i:i+1])
         combined.append(error_to_tensor(v_input_err[i:i+1]))
+        if res_img is not None:
+            combined.append(to_rgb_tensor(res_img[i:i+1])) 
         if res_depth is not None:
             combined.append(res_depth_vis[i:i+1])
             combined.append(error_to_tensor(v_output_err[i:i+1]))
-            nrow += 2
-        elif res_img is not None:
-            combined.append(to_rgb_tensor(res_img[i:i+1])) 
-            nrow += 1
+
             
     return make_grid(torch.cat(combined, dim=0), nrow=nrow, padding=10, pad_value=1.0)
 

@@ -658,13 +658,15 @@ def main():
                 model.eval()
                 with torch.no_grad():
                     zs = torch.randn(*deg_latent.shape, generator=generator, device=device, dtype=torch.float32)
-                    xt = zs + deg_latent
+                    # xt = zs + deg_latent
+                    xt = torch.cat([zs, deg_latent], dim=-1) # [B, 1, 1041, 2048]
                     sample_model_kwargs["img"] = deg_img.to(device)
-
+                    breakpoint()
                     with autocast(**autocast_kwargs):
-                        restored_latent = eval_sampler(xt, ema_model_fn, **sample_model_kwargs)[-1].float()
-                    
-                    vggt_result = {'restored_latent': restored_latent}
+                        restored_latent = eval_sampler(xt, ema_model_fn, **sample_model_kwargs).float()
+
+                    # vggt_result = {'restored_latent': restored_latent}
+                    vggt_result = {'restored_latent': restored_latent[:, :, :, :1024]}
                     restored_predictions = vggt_model(deg_img.to(device), extract_layer_num=extract_layer, 
                                                     vggt_result=vggt_result, change_latent=True)
                     restored_depths = restored_predictions['depth']
@@ -746,16 +748,18 @@ def main():
                             #     val_lq_deg_latent = val_lq_deg_latent.squeeze(1) # [B, 1041, 1024]
                             generator.manual_seed(global_seed + val_step)
                             zs = torch.randn(*val_lq_deg_latent.shape, generator=generator, device=device, dtype=torch.float32) # [B, 1041, 1024]
-                            val_xt = zs + val_lq_deg_latent # [B, 1041, 1024] 
-                            # breakpoint()
+                            # val_xt = zs + val_lq_deg_latent # [B, 1041, 1024] 
+                            val_xt = torch.cat([zs, val_lq_deg_latent], dim=-1)
+                            breakpoint()
                             sample_model_kwargs["img"] = val_deg_img.to(device)
 
                         with autocast(**autocast_kwargs):
-                            restored_latent = eval_sampler(val_xt, ema_model_fn, **sample_model_kwargs)[-1].float()
+                            restored_latent = eval_sampler(val_xt, ema_model_fn, **sample_model_kwargs).float()
 
                         vggt_result = {}
-                        vggt_result['restored_latent'] = restored_latent # [B, 1041, 1024]
-                        
+                        # vggt_result['restored_latent'] = restored_latent # [B, 1041, 1024]
+                        vggt_result['restored_latent'] = restored_latent[:, :, :, :1024]
+
                         val_predictions = vggt_model(val_deg_img.to(device), extract_layer_num=extract_layer, vggt_result=vggt_result, change_latent=True)
                         val_depths = val_predictions['depth'] # [B, 1, 392, 518, 1]
 

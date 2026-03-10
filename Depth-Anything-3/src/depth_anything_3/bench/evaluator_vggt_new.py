@@ -27,8 +27,10 @@ import json
 import os
 import random
 from typing import Dict as TDict, Iterable, List
+import glob
 
 import math
+from depth_anything_3.utils.read_write_model import Image
 import numpy as np
 import torch
 from addict import Dict
@@ -39,10 +41,16 @@ from depth_anything_3.utils.parallel_utils import parallel_execution
 from depth_anything_3.bench.registries import MV_REGISTRY
 from depth_anything_3.utils.constants_new import EVAL_REF_VIEW_STRATEGY
 import depth_anything_3.utils.constants_new as constants
+from depth_anything_3.bench.depth_metrics import (
+    DepthEvalConfig,
+    compute_depth_metrics,
+    resize_depth_nearest
+)
 
 from RAE.src.stage2.models import Stage2ModelProtocol
 from RAE.src.utils.model_utils import instantiate_from_config
 from RAE.src.stage2.transport import create_transport, Sampler
+from PIL import Image
 
 class Evaluator:
     """
@@ -60,7 +68,7 @@ class Evaluator:
         evaluator.print_metrics()
     """
 
-    VALID_MODES = {"pose", "recon_unposed", "recon_posed", "view_syn"}
+    VALID_MODES = {"pose", "recon_unposed", "recon_posed", "view_syn", "depth"}
 
     def __init__(
         self,
@@ -184,7 +192,7 @@ class Evaluator:
             return scenes
         return all_scenes
 
-    def infer(self, api, model_path: str = None, generator = None) -> None:
+    def infer(self, api, model_path: str = None, generator = None, process_single: bool = False) -> None:
         """
         Run inference according to requested modes.
 
@@ -198,7 +206,7 @@ class Evaluator:
             vggt_model: VGGT model instance
             model_path: Model path (unused, kept for API compatibility)
         """
-        need_unposed = {"pose", "recon_unposed"} & self.modes
+        need_unposed = {"pose", "recon_unposed", "depth"} & self.modes
         need_posed = {"recon_posed", "view_syn"} & self.modes
         export_format = "mini_npz-glb" if self.debug else "mini_npz"
 
@@ -217,48 +225,75 @@ class Evaluator:
             tasks = all_tasks
             print(f"[INFO] Total inference tasks: {len(tasks)}")
 
-        for data, scene in tqdm(tasks, desc=f"Inference (GPU {self.gpu_id})"):
-            dataset = self.datasets[data]
-            scene_data = dataset.get_data(scene)
-            scene_data = self._sample_frames(scene_data, scene)
+        if process_single:
+            print(f"[INFO] Processing each frame as a single-view sample.")
+            for data, scene in tqdm(tasks, desc=f"Inference (GPU {self.gpu_id})"):
+                dataset = self.datasets[data]
+                scene_data = dataset.get_data(scene)
+                samples = self._split_single_views(scene_data, scene, max_frames=self.max_frames)
+
+                for i, sample in enumerate(samples):
+                    if need_unposed:
+                        export_dir = self._export_dir(data, f"{scene}_{i}", posed=False)
+
+                        api.inference(
+                            sample,
+                            export_dir=export_dir,
+                            export_format=export_format,
+                            ref_view_strategy=self.ref_view_strategy,
+                            stage2_model=self.stage2_model,
+                            eval_sampler=self.eval_sampler,
+                            generator=generator,
+                            config=self.config,
+                            work_dir=self.work_dir,
+                            scene_info=(data, scene),
+                            use_pose=False
+                        )
+
+                        self._save_gt_meta(export_dir, sample)
+        else:
+            print(f"[INFO] Processing frames in batches.")
+            for data, scene in tqdm(tasks, desc=f"Inference (GPU {self.gpu_id})"):
+                dataset = self.datasets[data]
+                scene_data = dataset.get_data(scene)
+                scene_data = self._sample_frames(scene_data, scene)
             
+                if need_unposed:
+                    export_dir = self._export_dir(data, scene, posed=False)
+                    api.inference(
+                        scene_data,
+                        export_dir=export_dir,
+                        export_format=export_format,
+                        ref_view_strategy=self.ref_view_strategy,
+                        stage2_model=self.stage2_model,
+                        eval_sampler=self.eval_sampler,
+                        generator=generator,
+                        config=self.config,
+                        work_dir=self.work_dir,
+                        scene_info=(data,scene),
+                        use_pose=False
+                    )
+                    self._save_gt_meta(export_dir, scene_data)
 
-            if need_unposed:
-                export_dir = self._export_dir(data, scene, posed=False)
-                api.inference(
-                    scene_data,
-                    export_dir=export_dir,
-                    export_format=export_format,
-                    ref_view_strategy=self.ref_view_strategy,
-                    stage2_model=self.stage2_model,
-                    eval_sampler=self.eval_sampler,
-                    generator=generator,
-                    config=self.config,
-                    work_dir=self.work_dir,
-                    scene_info=(data,scene),
-                    use_pose=False
-                )
-                self._save_gt_meta(export_dir, scene_data)
-
-            # if need_posed:
-            #     breakpoint()
-            #     export_dir = self._export_dir(data, scene, posed=True)
-            #     api.inference(
-            #         scene_data,
-            #         scene_data.extrinsics,
-            #         scene_data.intrinsics,
-            #         export_dir=export_dir,
-            #         export_format=export_format,
-            #         ref_view_strategy=self.ref_view_strategy,
-            #         stage2_model=self.stage2_model,
-            #         eval_sampler=self.eval_sampler,
-            #         generator=generator,
-            #         config=self.config,
-            #         work_dir=self.work_dir,
-            #         scene_info=(data,scene),
-            #         use_pose=True
-            #     )
-            #     self._save_gt_meta(export_dir, scene_data)
+                # if need_posed:
+                #     breakpoint()
+                #     export_dir = self._export_dir(data, scene, posed=True)
+                #     api.inference(
+                #         scene_data,
+                #         scene_data.extrinsics,
+                #         scene_data.intrinsics,
+                #         export_dir=export_dir,
+                #         export_format=export_format,
+                #         ref_view_strategy=self.ref_view_strategy,
+                #         stage2_model=self.stage2_model,
+                #         eval_sampler=self.eval_sampler,
+                #         generator=generator,
+                #         config=self.config,
+                #         work_dir=self.work_dir,
+                #         scene_info=(data,scene),
+                #         use_pose=True
+                #     )
+                #     self._save_gt_meta(export_dir, scene_data)
 
     def eval(self) -> TDict[str, dict]:
         """
@@ -296,11 +331,106 @@ class Evaluator:
             for data, result in self._eval_reconstruction("recon_posed"):
                 summary[f"{data}_recon_posed"] = result
 
+        if "depth" in self.modes:
+            print(f"\n{'='*60}")
+            print(f"📊 Evaluating DEPTH for all datasets...")
+            print(f"{'='*60}")
+            summary.update(self._eval_depth(mode="depth"))
+
         if "view_syn" in self.modes:
             # TODO: Add view synthesis metrics here when available
             pass
 
         return summary
+
+    def _eval_depth(self, mode: str) -> dict[str, dict]:
+        assert mode in {"depth"} 
+        os.makedirs(self._metric_dir, exist_ok=True)
+
+        depth_datasets = [d for d in self.datas if d != "dtu64"]
+        eval_datasets = [d for d in depth_datasets]
+
+        cfg = DepthEvalConfig(delta_thresholds=(1.25, 1.25**2, 1.25**3))
+
+        all_metrics: dict[str, dict] = {}
+        for data in eval_datasets:
+            dataset = self.datasets[data]
+            dataset_results = {}
+
+            scenes = self._get_scenes(dataset)
+            success = 0
+            for scene in scenes:
+                try:
+                    breakpoint()
+                    out_dir = self._export_dir(data, scene, posed=False)
+                    result_path = os.path.join(out_dir, "exports", "mini_npz", "results.npz")
+                    if not os.path.exists(result_path):
+                        raise FileNotFoundError(result_path)
+
+                    pred_npz = np.load(result_path)
+                    if "depth" not in pred_npz:
+                        raise KeyError("results.npz missing 'depth'")
+                    pred_depths = pred_npz["depth"]  # (N,H,W)
+
+                    full_gt_data = dataset.get_data(scene)
+                    scene_data = self._sample_frames(full_gt_data, scene) 
+
+                    sampled_files = [str(p) for p in scene_data.image_files]
+                    image_indices = [full_gt_data.image_files.index(f) for f in sampled_files]
+
+                    per_img_metrics = []
+                    if data == "dtu":
+                        print(f"Evaluating depth for {data}/{scene} on {len(image_indices)} images...")
+                    
+                    for i, img_idx in enumerate(image_indices[: pred_depths.shape[0]]):
+                        pred_depth = pred_depths[i].astype(np.float32)
+
+                        gt_depth, gt_valid = self._load_gt_depth_and_mask(
+                            data=data,
+                            dataset=dataset,
+                            scene=scene,
+                            full_gt_data=full_gt_data,
+                            img_idx=img_idx,
+                        )
+
+                        pred_depth = resize_depth_nearest(pred_depth, gt_depth.shape[:2])
+
+                        m = compute_depth_metrics(pred_depth, gt_depth, gt_valid, cfg=cfg)
+                        if not m:
+                            continue
+                        per_img_metrics.append(m)
+
+                    if not per_img_metrics:
+                        raise RuntimeError("No valid GT depth pixels for evaluation.")
+
+                    scene_metrics = self._mean_of_dicts(per_img_metrics)
+                    scene_metrics["num_views"] = float(len(per_img_metrics))
+                    scene_metrics["num_eval_imgs"] = float(len(per_img_metrics))
+
+                    dataset_results[scene] = scene_metrics
+                    success += 1
+                except Exception as e:
+                    if self.debug:
+                        print(f"[WARN] depth eval failed for {data}/{scene}: {e}")
+
+            if success == 0:
+                continue
+
+            scene_vals = [v for k, v in dataset_results.items() if k != "mean"]
+            dataset_results["mean"] = self._mean_of_dicts(scene_vals)
+            dataset_results["success_rate"] = float(success) / float(len(scenes)) * 100.0
+            dataset_results["_meta"] = {
+                "mode": mode,
+                "delta_thresholds": list(cfg.delta_thresholds),
+                "note": "Depth metrics are abs_rel, sq_rel, rmse, rmse_log, d1, d2, d3, "
+                        "averaged per sampled image then per-scene.",
+            }
+
+            out_path = os.path.join(self._metric_dir, f"{data}_{mode}.json")
+            self._dump_json(out_path, dataset_results)
+            all_metrics[f"{data}_{mode}"] = dataset_results
+
+        return all_metrics
 
     def print_metrics(self, metrics: TDict[str, dict] = None) -> None:
         """
@@ -499,7 +629,12 @@ class Evaluator:
         if self.max_frames <= 0:
             return scene_data
 
-        num_frames = len(scene_data.lq_image_files)
+        # num_frames = len(scene_data.lq_image_files)
+        num_frames = min(
+            len(scene_data.lq_image_files),
+            len(scene_data.res_image_files),
+            len(scene_data.image_files)
+        )
         if num_frames <= self.max_frames:
             return scene_data
 
@@ -530,6 +665,178 @@ class Evaluator:
                 sampled.aux[key] = val
 
         return sampled
+    
+
+    def _split_single_views(self, scene_data: Dict, scene: str, max_frames: int = 50):
+        """
+        Convert scene data into single-view samples.
+
+        Args:
+            scene_data: Dict with image_files, extrinsics, intrinsics, aux
+            scene: scene name (for logging)
+            max_frames: maximum number of frames to sample per scene
+
+        Returns:
+            List[Dict]: each Dict contains a single frame
+        """
+
+        num_frames = min(
+            len(scene_data.lq_image_files),
+            len(scene_data.res_image_files),
+            len(scene_data.image_files)
+        )
+
+        indices = list(range(num_frames))
+
+        if max_frames > 0 and num_frames > max_frames:
+            random.seed(42)
+            random.shuffle(indices)
+            indices = sorted(indices[:max_frames])
+            print(f"[Sampling] {scene}: {num_frames} -> {len(indices)} images")
+
+        samples = []
+
+        for i in indices:
+            sample = Dict()
+
+            sample.lq_image_files = [scene_data.lq_image_files[i]]
+            sample.res_image_files = [scene_data.res_image_files[i]]
+            sample.image_files = [scene_data.image_files[i]]
+
+            sample.extrinsics = scene_data.extrinsics[i:i+1]
+            sample.intrinsics = scene_data.intrinsics[i:i+1]
+
+            sample.aux = Dict()
+            for key, val in scene_data.aux.items():
+
+                if isinstance(val, list) and len(val) == num_frames:
+                    sample.aux[key] = [val[i]]
+
+                elif isinstance(val, np.ndarray) and len(val) == num_frames:
+                    sample.aux[key] = val[i:i+1]
+
+                else:
+                    sample.aux[key] = val
+
+            samples.append(sample)
+
+        return samples
+    
+
+    def _read_pfm(self, path):
+        with open(path, "rb") as f:
+            header = f.readline().decode().rstrip()
+            color = header == "PF"
+
+            width, height = map(int, f.readline().decode().split())
+            scale = float(f.readline().decode().rstrip())
+
+            endian = "<" if scale < 0 else ">"
+            data = np.fromfile(f, endian + "f")
+
+            shape = (height, width, 3) if color else (height, width)
+            data = np.reshape(data, shape)
+            data = np.flipud(data)
+
+            return data
+    
+    def _load_gt_depth_and_mask(self, data: str, dataset, scene: str, full_gt_data, img_idx: int):
+        """Load GT depth (meters) and a boolean valid mask (True = valid)."""
+        import cv2
+        import imageio
+
+        data = data.lower()
+
+        if data == "eth3d":
+            img_path = full_gt_data.image_files[img_idx]
+            img_name = os.path.basename(img_path)
+
+            scene_dir = os.path.join(dataset.data_root, scene)
+            gt_depth_path = os.path.join(scene_dir, "ground_truth_depth", "dslr_images", img_name)
+            mask_name = os.path.splitext(img_name)[0] + ".png"
+            mask_candidates = [
+                os.path.join(scene_dir, "masks_for_images", "dslr_images", mask_name),
+                os.path.join(scene_dir, "ground_truth_masks", "dslr_images", img_name),
+            ]
+            gt_mask_path = next((p for p in mask_candidates if os.path.exists(p)), None)
+
+            if hasattr(full_gt_data, "aux") and hasattr(full_gt_data.aux, "heights"):
+                orig_h = int(full_gt_data.aux.heights[img_idx])
+                orig_w = int(full_gt_data.aux.widths[img_idx])
+            else:
+                im = cv2.imread(img_path)
+                if im is None:
+                    raise FileNotFoundError(f"Failed to read image for size: {img_path}")
+                orig_h, orig_w = im.shape[:2]
+
+            gt_depth = np.fromfile(gt_depth_path, dtype=np.float32).reshape(orig_h, orig_w)
+            invalid_from_depth = (gt_depth == 0) | (~np.isfinite(gt_depth))
+
+            gt_mask = cv2.imread(gt_mask_path, cv2.IMREAD_UNCHANGED) if gt_mask_path else None
+
+            if gt_mask is None:
+                invalid_from_mask = np.zeros_like(invalid_from_depth)
+            else:
+                invalid_from_mask = gt_mask == 1
+
+            valid = (~invalid_from_depth) & (~invalid_from_mask)
+            return gt_depth.astype(np.float32), valid.astype(bool)
+
+        if data == "dtu":
+            img_file = full_gt_data.image_files[img_idx]
+            img_num = int(img_file.split('/')[-1].split('_')[1])
+            depth_name = f"depth_map_{img_num:04d}.pfm"
+            mask_name = f"depth_visual_{img_num:04d}.png"
+
+            gt_depth_path = os.path.join(dataset.data_root, "depth_raw", "Depths", scene, depth_name)
+            gt_depth = self._read_pfm(gt_depth_path).astype(np.float32)
+            mask_path = os.path.join(dataset.data_root, "depth_raw", "Depths", scene, mask_name)
+            breakpoint()
+            mask = Image.open(mask_path)
+            mask = np.array(mask, dtype=np.float32)
+            valid_mask = mask > 10
+
+            invalid_from_depth = (gt_depth <= 0) | (~np.isfinite(gt_depth))
+            valid = valid_mask & (~invalid_from_depth)
+
+            return gt_depth, valid.astype(bool)
+        
+        aux = getattr(full_gt_data, "aux", None)
+        if aux is None or not hasattr(aux, "gt_depth_files"):
+            raise RuntimeError(f"Dataset '{data}' does not expose gt_depth_files for depth eval.")
+
+        depth_path = aux.gt_depth_files[img_idx]
+        breakpoint()
+
+        if data == "7scenes":
+            raw = imageio.imread(depth_path).astype(np.float32)
+            invalid = raw == 65535
+            gt_depth = raw / 1000.0
+            gt_depth[invalid] = 0.0
+            valid = gt_depth > 0
+            return gt_depth.astype(np.float32), valid.astype(bool)
+
+        if data == "hiroom":
+            raw = imageio.imread(depth_path).astype(np.float32)
+            gt_depth = raw / 65535.0 * 100.0
+            valid = gt_depth > 0
+            if hasattr(aux, "aliasing_mask_files"):
+                alias_path = aux.aliasing_mask_files[img_idx]
+                if alias_path and os.path.exists(alias_path):
+                    alias = imageio.imread(alias_path)
+                    valid &= alias == 0
+            return gt_depth.astype(np.float32), valid.astype(bool)
+
+        if data == "scannetpp":
+            raw = imageio.imread(depth_path).astype(np.float32)
+            gt_depth = raw / 1000.0
+            valid = (gt_depth > 0) & np.isfinite(gt_depth)
+            return gt_depth.astype(np.float32), valid.astype(bool)
+
+        raw = imageio.imread(depth_path).astype(np.float32)
+        gt_depth = raw / 1000.0
+        valid = (gt_depth > 0) & np.isfinite(gt_depth)
+        return gt_depth.astype(np.float32), valid.astype(bool)
 
     @property
     def _metric_dir(self) -> str:
@@ -551,15 +858,26 @@ class Evaluator:
     def _to_float_dict(d: TDict[str, float]) -> dict:
         """Convert numpy scalars to plain Python floats for JSON safety."""
         return {k: float(v) for k, v in d.items()}
-
+        
     @staticmethod
     def _mean_of_dicts(dicts: Iterable[dict]) -> dict:
-        """Compute elementwise mean across a list of homogeneous metric dicts."""
+        """Compute elementwise mean across a list of homogeneous metric dicts.
+        Ignores NaN values (failed scenes)."""
         dicts = list(dicts)
         if not dicts:
             return {}
+
         keys = dicts[0].keys()
-        return {k: float(np.mean([d[k] for d in dicts]).item()) for k in keys}
+        out = {}
+
+        for k in keys:
+            values = np.array([d[k] for d in dicts], dtype=np.float64)
+            if np.all(np.isnan(values)):
+                out[k] = float("nan")
+            else:
+                out[k] = float(np.nanmean(values))
+
+        return out
 
     @staticmethod
     def _dump_json(path: str, obj: dict, indent: int = 4) -> None:
@@ -605,6 +923,7 @@ if __name__ == "__main__":
     parser.add_argument("--lq_root_path", type=str)
     parser.add_argument("--res_root_path", type=str)
     parser.add_argument("--max_frames", type=int, help="Max frames per scene (-1=no limit)")
+    parser.add_argument("--process_single", action="store_true", help="Process each frame as a single-view sample")
 
     cli_args, remaining_argv = parser.parse_known_args()
 
@@ -725,6 +1044,7 @@ Examples:
     print_only = config.eval.print_only
     debug = config.inference.debug
     num_fusion_workers = config.inference.num_fusion_workers
+    process_single = cli_args.process_single
     
     # GPU settings: parse from CLI dotlist args (gpu_id=X total_gpus=Y)
     # These are passed by the main process when spawning workers
@@ -833,7 +1153,7 @@ Examples:
             generator = torch.Generator(device=device)
             generator.manual_seed(42)
 
-            evaluator.infer(api, model_path=model_path, generator=generator)
+            evaluator.infer(api, model_path=model_path, generator=generator, process_single=process_single)
 
             # Only run eval if single GPU mode (workers don't eval)
             if not is_worker:

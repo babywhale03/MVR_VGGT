@@ -24,7 +24,7 @@ import json
 import os
 import re
 from typing import Dict as TDict, List, Optional
-
+import numpy as np
 
 # ANSI color codes for terminal output
 class Colors:
@@ -451,6 +451,43 @@ class MetricsPrinter:
             val = get_pose_metric(ds, "Auc30")
             row += f"{fmt_val(val):<{col_width}}"
         print(row)
+
+        # ============ DEPTH METRICS ============
+        print(f"\n{Colors.BOLD_MAGENTA}📏 DEPTH ESTIMATION{Colors.RESET}")
+        depth_datasets = ["hiroom", "eth3d", "dtu", "7scenes", "scannetpp"]
+
+        depth_rows = [
+            ("AbsRel", "metric_depth", "abs_rel"),
+            ("SqRel", "metric_depth", "sq_rel"),
+            ("RMSE", "metric_depth", "rmse"),
+            ("RMSE_log", "metric_depth", "rmse_log"),
+            ("δ@1.25 (d1)", "metric_depth", "d1"),
+            ("δ@1.25² (d2)", "metric_depth", "d2"),
+            ("δ@1.25³ (d3)", "metric_depth", "d3"),
+            ("Valid pixels (%)", "metric_depth", "valid_pixels_pct"),
+        ]
+
+        metric_width = max(24, max(len(r[0]) for r in depth_rows) + 2)
+        header = f"{'Metric':<{metric_width}}{'Avg':<{col_width}}"
+        for ds in depth_datasets:
+            if ds in DATASET_DISPLAY:
+                header += f"{DATASET_DISPLAY[ds]:<{col_width}}"
+        print("-" * len(strip_ansi(header)))
+        print(f"{Colors.BOLD}{header}{Colors.RESET}")
+        print("-" * len(strip_ansi(header)))
+
+        for ridx, (label, mode, metric_name) in enumerate(depth_rows):
+            values = [get_metric(ds, mode, metric_name) for ds in depth_datasets]
+            valid_vals = [v for v in values if v is not None]
+            avg = float(np.mean(valid_vals)) if valid_vals else None
+
+            row = f"{label:<{metric_width}}{fmt_val(avg):<{col_width}}"
+            for v in values:
+                row += f"{fmt_val(v):<{col_width}}"
+            print(row)
+
+            if ridx in (3, 6):
+                print("-" * len(strip_ansi(header)))
 
         # ============ RECON_UNPOSED METRICS ============
         print(f"\n{Colors.BOLD_MAGENTA}🏗️  RECON_UNPOSED (Pred Pose){Colors.RESET}")

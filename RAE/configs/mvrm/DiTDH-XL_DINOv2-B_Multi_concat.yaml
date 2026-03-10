@@ -1,0 +1,150 @@
+stage_2:
+  model: VGGTMVRM
+  target: stage2.models.DDTMVRM_pos_multi.DiTwDDTHead
+  save_folder: train_hypersim_tartanair_nearcam__val_eth3d__nearrandom
+  exp_name: concat
+  params:
+    input_size: 16
+    patch_size: 1
+    vggt_patch_size: 14
+    in_channels: 2048 # 1024
+    # hidden_size: [1536, 2880]
+    # hidden_size: [1280, 2880]
+    hidden_size: [1152, 2048]
+    # hidden_size: [1152, 2304]
+    depth: [28, 2]
+    num_heads: [16, 16]
+    mlp_ratio: 4.0
+    use_qknorm: true
+    use_swiglu: true
+    use_rmsnorm: true
+    wo_shift: false
+    use_pos_embed: false
+  ckpt:
+  # ckpt: /mnt/dataset1/jaeeun/MVR_vggt/RAE/ckpts/train_hypersim_tartanair_nearcam__val_eth3d__nearrandom/VGGTMVRM__test__deg_first__val30_seed__ckpt7000__g0__kernel100__view4__fp32__ep10__bs-4__lr-2e-04__ema0.9995/checkpoints/step-0042000.pt
+  # ckpt: /mnt/dataset1/jaeeun/MVR_vggt/RAE/ckpts/train_hypersim_tartanair_nearcam__val_eth3d__nearrandom/VGGTMVRM__test_gf__deg_first__val30_seed__1152,2304__g0__kernel100__view3__fp32__ep10__bs-4__lr-2e-04__ema0.9995/checkpoints/global_step:0014000.pt
+  # ckpt: /mnt/dataset1/jaeeun/MVR_vggt/RAE/ckpts/train_hypersim_tartanair_nearcam__val_eth3d__nearrandom/VGGTMVRM__test_gf__deg_first__val30_seed__1152,2304__g0__kernel200__view3__fp32__ep10__bs-4__lr-2e-04__ema0.9995/checkpoints/global_step_0006000.pt
+  # ckpt: /mnt/dataset1/jaeeun/MVR_vggt/RAE/ckpts/train_hypersim_tartanair_nearcam__val_eth3d__nearrandom/VGGTMVRM__clean_recon__g0__kernel100__view4__fp32__ep10__bs-4__lr-2e-04__ema0.9995/checkpoints/step-0009000.pt
+
+transport:
+  params:
+    path_type: 'Linear'
+    prediction: 'velocity'
+    loss_weight: null
+    time_dist_type: 'logit-normal_0_1'
+
+sampler:
+  mode: ODE
+  params:
+    sampling_method: 'euler'
+    num_steps: 50
+    atol: 1.0e-6
+    rtol: 1.0e-3
+    reverse: false
+
+guidance:
+  method: 'cfg'
+  scale: 1.0
+  t_min: 0.0
+  t_max: 1.0
+
+misc:
+  # latent_size: [1041, 1024]
+  num_classes: 0
+  # time_dist_shift_dim: 1065984 # 1041*1024
+  time_dist_shift_base: 4096
+
+  
+training:
+  epochs: 10
+  global_batch_size: 16
+  grad_accum_steps: 1 # change according to your GPU memory
+  ema_decay: 0.9995
+  num_workers: 16
+  log_interval: 50
+  checkpoint_interval: 2000 # step
+  sample_every: 1000
+  clip_grad: 1.0
+  global_seed: 42
+  extract_layer: 3
+  optimizer:
+    lr: 2.0e-4
+    betas: [0.9, 0.95]
+    weight_decay: 0.0
+  scheduler:
+    type: cosine
+    warmup_epochs: 5 # 40
+    decay_end_epoch: 10
+    base_lr: 2.0e-4 
+    final_lr: 2.0e-5
+    warmup_from_zero: false
+
+data:
+  train:
+    dataset: ['hypersim', 'tartanair']
+    library:
+      hypersim:
+        clean_img_path: /mnt/dataset1/MV_Restoration/hypersim/data/
+        gt_depth_path: /mnt/dataset1/MV_Restoration/hypersim/data/
+        annotation_path: /mnt/dataset1/MV_Restoration/hypersim/metadata_images_split_scene_v1.csv
+        view_sel:
+          strategy: "near_camera" # or "random", "sequential"
+          expand_ratio: 2.0
+
+      tartanair:
+        clean_img_path: /mnt/dataset1/MV_Restoration/tartanair/data/
+        gt_depth_path: /mnt/dataset1/MV_Restoration/tartanair/data/
+        annotation_path:
+        view_sel:
+          strategy: "near_random" # or "random", "sequential"
+          expand_ratio: 2.0
+      
+      eth3d:
+        clean_img_path: /mnt/dataset1/MV_Restoration/da3_benchmark_dataset/clean/eth3d
+        gt_depth_path: /mnt/dataset1/MV_Restoration/da3_benchmark_dataset/clean/eth3d
+        annotation_path: 
+        view_sel:
+          strategy: "near_random" # or "random", "sequential"
+          expand_ratio: 2.0
+
+  val:
+    dataset: ['eth3d']
+    library:
+      hypersim:
+        clean_img_path: /mnt/dataset1/MV_Restoration/hypersim/data/
+        gt_depth_path: /mnt/dataset1/MV_Restoration/hypersim/data/
+        annotation_path: /mnt/dataset1/MV_Restoration/hypersim/metadata_images_split_scene_v1.csv
+        num_eval_img: 20
+        view_sel:
+          strategy: "near_random" # or "random", "sequential"
+          expand_ratio: 2.0
+
+      tartanair:
+        clean_img_path: /mnt/dataset1/MV_Restoration/tartanair/data/
+        gt_depth_path: /mnt/dataset1/MV_Restoration/tartanair/data/
+        annotation_path:
+        num_eval_img: 20
+        view_sel:
+          strategy: "near_random" # or "random", "sequential"
+          expand_ratio: 2.0
+
+      eth3d:
+        clean_img_path: /mnt/dataset1/MV_Restoration/da3_benchmark_dataset/clean/eth3d
+        gt_depth_path: /mnt/dataset1/MV_Restoration/da3_benchmark_dataset/clean/eth3d
+        annotation_path: 
+        num_eval_img: 20
+        view_sel:
+          strategy: "sequential" # or "random", "sequential"
+          expand_ratio: 2.0
+      
+      co3d:
+        clean_img_path: /mnt/dataset1/MV_Restoration/co3d/co3d_single_seq
+        gt_depth_path: /mnt/dataset1/MV_Restoration/co3d/co3d_single_seq
+        annotation_path: /mnt/dataset1/MV_Restoration/co3d/co3d_annotation
+
+      
+# eval:
+#   eval_interval: 25000 # every 10 epochs
+#   eval_model: true
+#   data_path: 'data/imagenet/val/'
+#   reference_npz_path: 'data/imagenet/VIRTUAL_imagenet256_labeled.npz'

@@ -188,7 +188,6 @@ class DDTFinalLayer(nn.Module):
         )
 
     def forward(self, x, c):
-        # breakpoint()
         if len(c.shape) < len(x.shape):
             c = c.unsqueeze(1)
         shift, scale = self.adaLN_modulation(c).chunk(2, dim=-1)
@@ -413,10 +412,10 @@ class DiTwDDTHead(nn.Module):
             pos = torch.cat([pos_special, pos], dim=1) # [B * S, 1041, 2]
 
         pos = pos.view(B, S, P, 2) # [B, S, 1041, 2]
-
         # encoder
         if s is None:
             s = self.s_embedder(x) # linear: [B, S, 1041, 1024] -> [B, S, 1041, 1152]
+
             if self.use_pos_embed:
                 s = s + self.pos_embed 
             
@@ -436,7 +435,6 @@ class DiTwDDTHead(nn.Module):
         x = self.x_embedder(x) # linear: [B, S, 1041, 1024] -> [B, S, 1041, 2048]
         if self.use_pos_embed and self.x_pos_embed is not None:
             x = x + self.x_pos_embed
-        # breakpoint()
         # decoder
         for i in range(self.num_encoder_blocks, self.num_blocks): # num_decoder_blocks=2
             block = self.blocks[i]
@@ -446,10 +444,10 @@ class DiTwDDTHead(nn.Module):
                 x = self.process_global_attention(x, s, block, pos=pos)
         
         if len(x.shape) == 4:
-            x = x.view(B * S, P, -1)
+            x = x.view(B * S, P, -1) # [B, 1041, 2048]
         if len(s.shape) == 4:
             s = s.view(B * S, P, -1)
-        # breakpoint()
+
         x = self.final_layer(x, s)
         x = x.view(B, S, P, -1)
         

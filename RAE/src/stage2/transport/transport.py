@@ -1,7 +1,7 @@
 import torch as th
 import numpy as np
 import logging
-
+import torch
 import enum
 
 from . import path
@@ -277,14 +277,16 @@ class Transport:
             # deg_latent = deg_latent.squeeze(1) # [B, 1041, 1024]
             t, x0, x1 = self.sample(x1) # t: [B,], x0: [B, S, 1041, 1024], x1: [B, S, 1041, 1024]
             t, xt, ut = self.path_sampler.plan(t, x0, x1)
-            xt = xt + deg_latent # [B, S, 1041, 1024]
+            # xt = xt + deg_latent # [B, S, 1041, 1024]
+            xt = torch.cat([xt, deg_latent], dim=-1)
             model_output = model(clean_img, xt, t, step=step, experiment_dir=experiment_dir, **model_kwargs) # [B, S, 1041, 1024]
+            model_output = model_output[:, :, :, :1024]
         else:
             t, x0, x1 = self.sample(x1) # t: [B,], x0: [B, S, 1041, 1024], x1: [B, S, 1041, 1024]
             t, xt, ut = self.path_sampler.plan(t, x0, x1)
             xt = xt + x1 # [B, S, 1041, 1024]
             model_output = model(clean_img, xt, t, experiment_dir=experiment_dir, **model_kwargs)
-            
+
         terms = {}
         terms['pred'] = model_output # [B, 1041, 1024]
         # breakpoint()
@@ -564,7 +566,7 @@ class Transport:
         def body_fn(x, t, model, **model_kwargs):
             model_output = drift_fn(x, t, model, **model_kwargs)
             # print(f"drift output shape: {model_output.shape}, input shape: {x.shape}")
-            assert model_output.shape == x.shape, "Output shape from ODE solver must match input shape"
+            # assert model_output.shape == x.shape, "Output shape from ODE solver must match input shape"
             return model_output
 
         return body_fn
